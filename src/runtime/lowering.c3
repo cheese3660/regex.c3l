@@ -495,7 +495,7 @@ fn AutomatonLoweringResult? LoweringContext.lower(&self, RegexNode* node, uint r
             self.add_transition(child.end, end);
             return {begin, end};
         case ZERO_OR_MORE:
-            uint begin = self.get_next_state(1)!;
+            uint begin = self.get_next_state(2)!;
             uint end = self.get_next_state(required_end_edge_count)!;
             AutomatonLoweringResult child = self.lower(node.child, 1)!;
             self.add_transition(begin, child.begin);
@@ -611,6 +611,12 @@ fn NfaRegex? compile_regex(String regexStr, Options options = NONE, Allocator al
 
         usz state_count = root_context.automaton.state_edge_count.len();
         usz edge_count = root_context.automaton.edges.len();
+
+        foreach (&edge : root_context.automaton.edges)
+        {
+            if (edge.transition_type == BACK_REFERENCE && edge.associated_data.back_reference.capture_group_index > max_capture_group_index) return regex::INVALID_CAPTURE_GROUP_ID?;
+        }
+        
         // Now let's do some analyses
         foreach (&automaton : subautomata)
         {
@@ -618,8 +624,7 @@ fn NfaRegex? compile_regex(String regexStr, Options options = NONE, Allocator al
             edge_count += automaton.sub_automaton.edges.len();
             foreach (&edge : automaton.sub_automaton.edges) 
             {
-                if (edge.capture_begin > max_capture_group_index) return regex::INVALID_CAPTURE_GROUP_ID?;
-                if (edge.capture_end > max_capture_group_index) return regex::INVALID_CAPTURE_GROUP_ID?;
+            if (edge.transition_type == BACK_REFERENCE && edge.associated_data.back_reference.capture_group_index > max_capture_group_index) return regex::INVALID_CAPTURE_GROUP_ID?;
             }
         }
 

@@ -377,6 +377,7 @@ fn bool NfaRegex.should_transition(&self, usz edge_offset, usz current_index, St
                     if (i >= view.len) return false;
                     if (view[i] == '\n') return false;
                 }
+                return true;
             }
             else
             {
@@ -401,7 +402,6 @@ fn bool NfaRegex.should_transition(&self, usz edge_offset, usz current_index, St
                 }
                 return true;
             }
-            return true;
         case STRING:
             if (ascii_only)
             {
@@ -735,7 +735,7 @@ fn Match? NfaRegex.match_in_view(&self, String view, usz offset, Allocator match
     @param capture_base         : "The parent capture group array, if there is one"
     @param require_full         : "Does this require a full match?"
 
-    @require offset < view.len : "Offset is out of bounds of the string"
+    @require offset <= view.len : "Offset is out of bounds of the string"
     @require sub_automaton_index < self.automaton_count : "Invalid subautomaton index"
     @require capture_base == null || capture_base.ref_count > 0 : "The capture group array is deallocated"
 

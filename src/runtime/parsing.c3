@@ -363,9 +363,7 @@ fn ushort? RegexParser.next_cg(&self) @private
 *>
 fn RegexNode*? RegexParser.expr(&self, bool return_on_gp_end = false) @private
 {
-    
     RegexNode* previous = self.quantified()!;
-    if (self.tokenizer.done()) return previous;
     while (!self.tokenizer.done())
     {
         RegexToken next = self.tokenizer.get_next_token()!;
@@ -373,16 +371,20 @@ fn RegexNode*? RegexParser.expr(&self, bool return_on_gp_end = false) @private
         {
             return previous;
         }
+        if (!return_on_gp_end && next.type == GROUP_END)
+        {
+            return regex::EXTRANEOUS_PARENTHESES?;
+        }
         if (next.type == SEPARATOR)
         {
-            return disjunction(previous, self.expr()!);
+            return disjunction(previous, self.expr(return_on_gp_end)!);
         }
         self.tokenizer.backtrack(next);
         previous = concatenation(previous, self.quantified()!);
     }
     if (return_on_gp_end)
     {
-        return regex::UNEXPECTED_END_OF_INPUT?;
+        return regex::UNTERMINATED_SUBEXPRESSION?;
     }
     return previous;
 }
@@ -405,6 +407,7 @@ fn RegexNode*? RegexParser.quantified(&self) @private
         case RQ_BEGIN:
             peek = self.tokenizer.get_next_token()!;
             if (peek.type == RQ_END) return regex::UNFILLED_RANGE_QUANTIFIER?;
+            if (peek.type == RQ_SEPARATOR) return regex::INVALID_RANGE_QUANTIFIER?;
             uint begin = peek.context.num;
             peek = self.tokenizer.get_next_token()!;
             if (peek.type == RQ_END)
@@ -541,6 +544,8 @@ fn CharacterClass? RegexParser.class(&self) @private
                 class.add_fn(&character_functions::is_xdigit);
             case PUNCT_CLASS:
                 class.add_fn(&character_functions::is_punct);
+            case DIGIT_CLASS:
+                class.add_fn(&character_functions::is_digit);
             case DASH:
                 class.add_character('-');
             case CHARACTER:

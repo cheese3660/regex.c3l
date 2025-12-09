@@ -215,7 +215,7 @@ fn Char32? handle_escape_character(String after_escape, usz* consumed) @private
                 actually_consumed += 1;
             } while (actually_consumed < 7 && actually_consumed < after_escape.len && after_escape[actually_consumed].is_xdigit());
             *consumed = actually_consumed;
-            if (result >= 0x10FFFF) return regex::INVALID_ESCAPE_SEQUENCE?;
+            if (result > 0x10FFFF) return regex::INVALID_ESCAPE_SEQUENCE?;
             return result;
         case '0':
             return 0;

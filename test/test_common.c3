@@ -39,6 +39,20 @@ macro regex_expect_match_full($regex, $options, ...)
     };
 }
 
+macro regex_expectnt_match_full($regex, $options, ...)
+{
+    @pool()
+    {
+        RuntimeRegex? rr = regex::make_runtime_regex($regex, $options, tmem);
+        if (catch rr) assert(false, "Regex " +++ $regex +++ " failed to be lowered");
+        Regex r = &rr;
+
+        $for var $i = 0; $i < $vacount; $i++:
+            assert(!r.matches($vaconst[$i]), "Regex " +++ $regex +++ " matched " +++ $vaconst[$i]);
+        $endfor;
+    };
+}
+
 macro regex_expect_capture_groups($regex, $options, $on, ...)
 {
     @pool()
@@ -52,8 +66,23 @@ macro regex_expect_capture_groups($regex, $options, $on, ...)
         assert(first_match.begin_offset() == 0 && first_match.end_offset() == $on.len, "Regex " +++ $regex +++ " did not fully match " +++ $on);
         assert(first_match.len() == $vacount + 1,  "Regex " +++ $regex +++ " did not have the expected number of capture groups");
         
-        $for var $i = 0; $i < vacount; $i++:
-            assert(first_match[$i+1].captured == $vaconst[$i], "Regex " +++ $regex +++ " did not have the expected capture group of " +++ $vaconst[i]);
+        $for var $i = 0; $i < $vacount; $i++:
+            assert(first_match[$i+1].captured == $vaconst[$i], "Regex " +++ $regex +++ " did not have the expected capture group of " +++ $vaconst[$i]);
         $endfor
+    };
+}
+
+macro regex_expect_fault($regex, $options, fault expected)
+{
+    @pool()
+    {
+        if (catch f = regex::make_runtime_regex($regex, $options, tmem))
+        {
+            assert(f == expected, "Regex " +++ $regex +++ " did not produce the correct fault");
+        }
+        else
+        {
+            assert(false, "Regex " +++ $regex +++ " did not produce a fault");
+        }
     };
 }
