@@ -8,8 +8,8 @@ import regex;
 import regex::utf8;
 
 
-<* The escape sequence used by the regex engine, it is set to '%' to make writing literals easier *>
-const ESCAPE_SEQUENCE = "%";
+<* The escape sequence used by the regex engine, it is `\` because `\` can be easily written in a raw literal*>
+const ESCAPE_SEQUENCE = `\`;
 
 enum RegexTokenType : char (TokenizerMode next_state_regular, TokenizerMode next_state_cg, TokenizerMode next_state_rq) 
 {

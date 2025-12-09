@@ -6,7 +6,6 @@ It supports UTF8 regexen, but does not provide character classes for characters 
 
 The syntax is based off of this but there are few changes https://cplusplus.com/reference/regex/ECMAScript/
 
-- The escape sequence introducer has been changed from `\` to `%` to make writing regexen in string literals easier (this may change)
 - `[.classname.]` and `[=classname=]` do not exist
 - Each of the `[:classname:]` classes has a shorthand form
     * `[:alnum:]`  <-> `[:w:]`
@@ -28,7 +27,7 @@ The syntax is based off of this but there are few changes https://cplusplus.com/
 import regex;
 
 /* Making a regex (called runtime regex due to future plans for compiled regexen) */
-RuntimeRegex rr = regex::make_runtime_regex("ident(%d{3,5})", Options.IGNORE_CASE, tmem)!; // It returns an optional that contains error information
+RuntimeRegex rr = regex::make_runtime_regex(`ident(\d{3,5})`, Options.IGNORE_CASE, tmem)!; // It returns an optional that contains error information
 Regex r = &rr; // Get the regex interface implementation
 
 /* Iterating over matches */
