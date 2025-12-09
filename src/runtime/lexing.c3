@@ -5,7 +5,11 @@ module regex::runtime::lexing;
 
 import std::collections::list;
 import regex;
+import regex::utf8;
 
+
+<* The escape sequence used by the regex engine, it is set to '%' to make writing literals easier *>
+const ESCAPE_SEQUENCE = "%";
 
 enum RegexTokenType : char (TokenizerMode next_state_regular, TokenizerMode next_state_cg, TokenizerMode next_state_rq) 
 {
@@ -46,10 +50,11 @@ enum RegexTokenType : char (TokenizerMode next_state_regular, TokenizerMode next
     DIGIT_CLASS = {DEFLT,IN_CG,IN_RQ},        // :digit:,   :d:
     GRAPH_CLASS = {DEFLT,IN_CG,IN_RQ},        // :graph:,   :g:
     LOWER_CLASS = {DEFLT,IN_CG,IN_RQ},        // :lower:,   :l:
-    PRINT_CLASS = {DEFLT,IN_CG,IN_RQ},        // :print:, :p:
+    PRINT_CLASS = {DEFLT,IN_CG,IN_RQ},        // :print:,   :p:
     SPACE_CLASS = {DEFLT,IN_CG,IN_RQ},        // :space:,   :s:
     UPPER_CLASS = {DEFLT,IN_CG,IN_RQ},        // :upper:,   :u:
     XDIGT_CLASS = {DEFLT,IN_CG,IN_RQ},        // :xdigit:,  :x:
+    PUNCT_CLASS = {DEFLT,IN_CG,IN_RQ},        // :punct:,   :.:
 }
 
 struct RegexToken 
@@ -58,7 +63,7 @@ struct RegexToken
     union context 
     {
         uint num;
-        char ch;
+        Char32 ch;
     }
 }
 
@@ -80,12 +85,12 @@ const TokenMapEntry[*] TOP_LEVEL_TOKEN_MAP @private = {
     {"[", POS_CG_BEGIN},
     {"]", CG_END},
     {".", WILDCARD},
-    {"\\w", WORD},
-    {"\\W", NON_WORD},
-    {"\\s", WHITESPACE},
-    {"\\S", NON_WHITESPACE},
-    {"\\d", DIGIT},
-    {"\\D", NON_DIGIT},
+    {ESCAPE_SEQUENCE +++ "w", WORD},
+    {ESCAPE_SEQUENCE +++ "W", NON_WORD},
+    {ESCAPE_SEQUENCE +++ "s", WHITESPACE},
+    {ESCAPE_SEQUENCE +++ "S", NON_WHITESPACE},
+    {ESCAPE_SEQUENCE +++ "d", DIGIT},
+    {ESCAPE_SEQUENCE +++ "D", NON_DIGIT},
     {"(?:", NO_BR_GROUP_OPEN},
     {"(?=", POS_LOOK},
     {"(?!", NEG_LOOK},
@@ -98,8 +103,8 @@ const TokenMapEntry[*] TOP_LEVEL_TOKEN_MAP @private = {
     {"}", RQ_END},
     {"^", BEGINNING},
     {"$", END},
-    {"\\b", WORD_BOUNDARY},
-    {"\\B", NOT_WORD_BOUNDARY},
+    {ESCAPE_SEQUENCE +++ "b", WORD_BOUNDARY},
+    {ESCAPE_SEQUENCE +++ "B", NOT_WORD_BOUNDARY},
     {"|", SEPARATOR}
 };
 
@@ -118,6 +123,7 @@ const TokenMapEntry[*] CG_TOKEN_MAP @private = {
     {":space:", SPACE_CLASS}, {":s:", SPACE_CLASS},
     {":upper:", UPPER_CLASS}, {":u:", UPPER_CLASS},
     {":xdigit:",XDIGT_CLASS}, {":x:", XDIGT_CLASS},
+    {":punct:", PUNCT_CLASS}, {":.:", PUNCT_CLASS},
 };
 
 
@@ -136,35 +142,48 @@ struct TokenizerContext
 
     bool has_stored_backtrack;
     RegexToken stored_back_track;
+
+    Options options;
 }
 
-fn TokenizerContext on(String regex) 
+fn TokenizerContext on(String regex, Options options) 
 {
     return {
         regex,
         DEFLT,
         false,
         {},
+        options
     };
 }
 
-macro char from_hex(char hi, char low) @private {
-    return (ascii::HEX_VALUE[hi] << 4) | ascii::HEX_VALUE[low];
-}
 
 <*
-    @param after_slash       : "The part after the slash of the escape sequence being handled"
+    Construct a unicode character from ascii hex digits (Parameters are in an odd order to make it reusable)
+
+    @param hi : "The most significant nibble"
+    @param low : "The least significant nibble"
+*>
+fn Char32 from_hex(char hi, char low) @private {
+    return ((Char32)ascii::HEX_VALUE[hi] << 4) |
+           (Char32)ascii::HEX_VALUE[low];
+}
+
+macro Char32 from_hex_unicode(char x) @private => (Char32)ascii::HEX_VALUE[x];
+
+<*
+    @param after_escape      : "The part after the escape sequence being handled"
     @param [&out] consumed   : "How much of the string after the slash is consumed"
 
     @return? regex::INVALID_ESCAPE_SEQUENCE : "If the escape sequence is invalid"
 *>
-fn char? handle_escape_character(String after_slash, usz* consumed) @private
+fn Char32? handle_escape_character(String after_escape, usz* consumed) @private
 {
-    if (after_slash.len == 0) return regex::INVALID_ESCAPE_SEQUENCE?;
+    if (after_escape.len == 0) return regex::INVALID_ESCAPE_SEQUENCE?;
 
     *consumed = 1;
     
-    switch (after_slash[0])
+    switch (after_escape[0])
     {
         case 't':
             return '\t';
@@ -177,18 +196,31 @@ fn char? handle_escape_character(String after_slash, usz* consumed) @private
         case 'r':
             return '\r';
         case 'c':
-            if (after_slash.len == 1) return regex::INVALID_ESCAPE_SEQUENCE?;
+            if (after_escape.len == 1) return regex::INVALID_ESCAPE_SEQUENCE?;
             *consumed = 2;
-            return after_slash[1] & 31;
+            return after_escape[1] & 31;
         case 'x':
             *consumed = 3;
-            if (after_slash.len < 3) return regex::INVALID_ESCAPE_SEQUENCE?;
-            if (!after_slash[1].is_xdigit() || !after_slash[2].is_xdigit()) return regex::INVALID_ESCAPE_SEQUENCE?;
-            return from_hex(after_slash[1], after_slash[2]);
+            if (after_escape.len < 3) return regex::INVALID_ESCAPE_SEQUENCE?;
+            if (!after_escape[1].is_xdigit() || !after_escape[2].is_xdigit()) return regex::INVALID_ESCAPE_SEQUENCE?;
+            return from_hex(after_escape[1], after_escape[2]);
+        case 'u':
+            usz actually_consumed = 1;
+            if (after_escape.len < 2) return regex::INVALID_ESCAPE_SEQUENCE?;
+            if (!after_escape[1].is_xdigit()) return regex::INVALID_ESCAPE_SEQUENCE?;
+            Char32 result = 0;
+            do {
+                result <<= 4;
+                result |= from_hex_unicode(after_escape[actually_consumed]);
+                actually_consumed += 1;
+            } while (actually_consumed < 7 && actually_consumed < after_escape.len && after_escape[actually_consumed].is_xdigit());
+            *consumed = actually_consumed;
+            if (result >= 0x10FFFF) return regex::INVALID_ESCAPE_SEQUENCE?;
+            return result;
         case '0':
             return 0;
         default:
-            return after_slash[0];
+            return after_escape[0];
     }
 }
 
@@ -247,6 +279,8 @@ fn RegexToken? TokenizerContext.get_next_token(&self)
     return result;
 }
 
+
+
 <*
     @param [&inout] consumed : "How much data was consumed"
 
@@ -267,12 +301,12 @@ fn RegexToken? TokenizerContext.deflt(&self, usz* consumed) @private
         }
     }
 
-    if (regex[0] == '\\') 
+    if (regex.starts_with(ESCAPE_SEQUENCE)) 
     {
-        if (regex.len == 1) return regex::INVALID_ESCAPE_SEQUENCE?;
-        if (regex[1].is_digit() && regex[1] != '0') 
+        if (regex.len == ESCAPE_SEQUENCE.len) return regex::INVALID_ESCAPE_SEQUENCE?;
+        if (regex[ESCAPE_SEQUENCE.len].is_digit() && regex[ESCAPE_SEQUENCE.len] != '0')
         {
-            usz end_index = 2;
+            usz end_index = ESCAPE_SEQUENCE.len + 1;
             for (usz i = end_index; i < regex.len && regex[i].is_digit(); i++) 
             {
                 end_index = i;
@@ -289,15 +323,23 @@ fn RegexToken? TokenizerContext.deflt(&self, usz* consumed) @private
             RegexToken result;
             result.type = CHARACTER;
             result.context.ch = handle_escape_character(regex[1..], consumed)!;
-            *consumed += 1;
+            *consumed += ESCAPE_SEQUENCE.len;
             return result;
         }
     }
 
     RegexToken result;
     result.type = CHARACTER;
-    result.context.ch = regex[0];
-    *consumed = 1;
+    // Let's use a unicode character here
+    if (self.options & Options.ASCII_ONLY == 0)
+    {
+        result.context.ch = utf8::get_character(regex, consumed)!;
+    }
+    else
+    {
+        *consumed = 1;
+        result.context.ch = regex[0];
+    }
     return result;
 }
 
@@ -361,18 +403,25 @@ fn RegexToken? TokenizerContext.cg(&self, usz* consumed) @private
         }
     }
 
-    if (!regex.starts_with("\\")) {
+    if (!regex.starts_with(ESCAPE_SEQUENCE)) {
         RegexToken result;
         result.type = CHARACTER;
-        result.context.ch = regex[0];
-        *consumed = 1;
+        if (self.options & Options.ASCII_ONLY == 0)
+        {
+            result.context.ch = utf8::get_character(regex, consumed)!;
+        }
+        else
+        {
+            *consumed = 1;
+            result.context.ch = regex[0];
+        }
         return result;
     }
 
     RegexToken result;
     result.type = CHARACTER;
-    result.context.ch = handle_escape_character(regex[1..],consumed)!;
-    *consumed += 1;
+    result.context.ch = handle_escape_character(regex[ESCAPE_SEQUENCE.len..],consumed)!;
+    *consumed += ESCAPE_SEQUENCE.len;
 
     return result;
 }

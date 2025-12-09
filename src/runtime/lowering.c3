@@ -2,11 +2,12 @@
     This module implements lowering a regular expression syntax tree into a set of non-deterministic finite automata
 *>
 module regex::runtime::lowering;
-
 import regex::runtime::automata;
 import regex::runtime::character_class;
 import regex::runtime::parsing;
+import regex::utf8;
 import std::collections::list;
+import std::collections::set;
 
 
 <*
@@ -187,16 +188,13 @@ struct InternedStringInfo @private
 <*
     Intern a string into a dstring
 
-    @param to_intern                 : "The string to intern"
-    @param [&in] internment_cache
-
+    @param to_intern : "The string to intern"
+    @param [&in] internment_cache : "The cache to intern it to"
 
     @return "The position in the interment cache of the string"
 *>
 fn InternedStringInfo intern_string(String to_intern, DString *internment_cache) @private 
 {
-    if (internment_cache.len() == 0) internment_cache.tinit();
-
     if (try index = internment_cache.str_view().index_of(to_intern)) 
     {
         return {index, to_intern.len};
@@ -246,8 +244,10 @@ struct LoweringContext @private
     List { LoweredSubAutomaton }* sub_automata;
     List { CharacterClass }* character_internment_cache;
     DString* string_interment_cache;
+    HashSet { usz /* RegexNode* */}* failed_string_conversions;
     ushort* max_capture_group_index;
     SingleAutomaton automaton;
+    Options options;
 }
 
 // All that's needed here is a way to lower a regex to a non-deterministic finite automata
@@ -273,8 +273,10 @@ fn ushort? LoweringContext.get_sub_automaton(&self, RegexNode* sub_automaton) @p
         self.sub_automata,
         self.character_internment_cache,
         self.string_interment_cache,
+        self.failed_string_conversions,
         self.max_capture_group_index,
-        {}
+        {},
+        self.options
     };
 
     AutomatonLoweringResult result = child.lower(sub_automaton)!;
@@ -326,6 +328,83 @@ fn void LoweringContext.add_transition(&self, uint state, uint next_state, Trans
     };
 }
 
+faultdef IS_NOT_A_STRING_TREE;
+
+<*
+    Append a node to a string tree
+
+    @param [&in] node : "The node to append"
+    @param builder    : "The builder to append it to"
+
+    @return? IS_NOT_A_STRING_TREE : "If the node cannot be converted to a string"
+*>
+fn void? LoweringContext.get_string_build(&self, RegexNode* node, DString* builder) @private
+{
+    if (self.failed_string_conversions.contains((usz)node)) return IS_NOT_A_STRING_TREE?;
+    defer catch self.failed_string_conversions.add((usz)node);
+
+    switch (node.type)
+    {
+        case CHARACTER:
+            if (self.options & Options.ASCII_ONLY) 
+            {
+                builder.reserve(node.character.repeat_count);
+                for (uint i = 0; i < node.character.repeat_count; i++)
+                {
+                    builder.append_char((char)node.character.character);
+                }
+            } 
+            else 
+            {
+                // builder.reserve(node.character.repeat_count);
+                builder.reserve(utf8::get_len(node.character.character) * node.character.repeat_count);
+                for (uint i = 0; i < node.character.repeat_count; i++)
+                {
+                    builder.append_char32(node.character.character);
+                }
+            }
+        case EXACTLY:
+            @pool()
+            {
+                DString child_builder;
+                child_builder.tinit();
+                self.get_string_build(node.node_and_number.child, &child_builder)!;
+
+                for (uint i = 0; i < node.node_and_number.repeat_count; i++)
+                {
+                    builder.append_string(child_builder);
+                }
+            };
+        case CONCAT:
+            self.get_string_build(node.binary.lhs,builder)!;
+            self.get_string_build(node.binary.rhs,builder)!;
+        default:
+            return IS_NOT_A_STRING_TREE?;
+    }
+}
+
+<*
+    Build the node into a string if it is possible
+
+    @param [&in] node : "The node to check"
+
+    @return  "The interned string information"
+    @return? IS_NOT_A_STRING_TREE : "If the node cannot be converted to a string"
+*>
+fn InternedStringInfo? LoweringContext.get_string(&self, RegexNode* node) @private
+{
+    @pool()
+    {
+        DString result;
+        result.tinit();
+        if (try self.get_string_build(node, &result))
+        {
+            return intern_string(result.str_view(),self.string_interment_cache);
+        }
+        return IS_NOT_A_STRING_TREE?;
+    };
+}
+
 <*
     Lower a single regex node
 
@@ -337,6 +416,13 @@ fn void LoweringContext.add_transition(&self, uint state, uint next_state, Trans
 *>
 fn AutomatonLoweringResult? LoweringContext.lower(&self, RegexNode* node, uint required_end_edge_count = 0) @private
 {
+    if (try info = self.get_string(node))
+    {
+        uint begin = self.get_next_state(1)!;
+        uint end = self.get_next_state(required_end_edge_count)!;
+        self.add_transition(begin, end, STRING, {.string = {(uint)info.begin, (uint)info.len}});
+        return {begin, end};
+    }
     switch (node.type)
     {
         case WILDCARD:
@@ -344,12 +430,8 @@ fn AutomatonLoweringResult? LoweringContext.lower(&self, RegexNode* node, uint r
             uint end = self.get_next_state(required_end_edge_count)!;
             self.add_transition(begin,end, WILDCARD, {.wildcard = {node.repeat_count}});
             return {begin, end};
-        case STRING:
-            uint begin = self.get_next_state(1)!;
-            uint end = self.get_next_state(required_end_edge_count)!;
-            InternedStringInfo string_info = intern_string(node.string.str_view(), self.string_interment_cache);
-            self.add_transition(begin,end, STRING, {.string = {(uint)string_info.begin, (uint)string_info.len}});
-            return {begin, end};
+        case CHARACTER:
+            unreachable("All characters should have become strings!");
         case BACKREF:
             uint begin = self.get_next_state(1)!;
             uint end = self.get_next_state(required_end_edge_count)!;
@@ -492,17 +574,28 @@ fn AutomatonLoweringResult? LoweringContext.lower(&self, RegexNode* node, uint r
 
 <*
     Compile a regex into a set of automata, and epsilon reduce it
+    
+    @param regexStr  : "The string to compile into a set of automata"
+    @param options   : "The options that the regex uses"
+    @param allocator : "The memory allocator to allocate the regex with"
+
+    @return "A NFA representing a regex"
 *>
-fn NfaRegex? compile_regex(String regexStr, Options options, Allocator allocator)
+fn NfaRegex? compile_regex(String regexStr, Options options = NONE, Allocator allocator = mem)
 {
     @pool()
     {
-        RegexNode* regex = parsing::parse_regex(regexStr)!;
+        RegexNode* regex = parsing::parse_regex(regexStr, options)!;
         List { LoweredSubAutomaton } subautomata;
         List { CharacterClass } classes;
+        HashSet { usz } failed_string_conversions;
         DString strings;
+        subautomata.tinit();
+        classes.tinit();
+        strings.tinit();
+        failed_string_conversions.tinit();
         ushort max_capture_group_index;
-        LoweringContext root_context = {&subautomata, &classes, &strings, &max_capture_group_index, {}};
+        LoweringContext root_context = {&subautomata, &classes, &strings, &failed_string_conversions, &max_capture_group_index, {}, options};
         AutomatonLoweringResult result = root_context.lower(regex)!;
         root_context.automaton.begin = result.begin;
         root_context.automaton.end = result.end;
@@ -535,6 +628,9 @@ fn NfaRegex? compile_regex(String regexStr, Options options, Allocator allocator
             return regex::REGEX_TOO_COMPLEX?;
         }
 
+        CharacterClass[] allocated_classes = allocator::new_array(allocator, CharacterClass, classes.len());
+        for (usz i = 0; i < allocated_classes.len; i++) allocated_classes[i] = classes[i].copy(allocator);
+
         NfaRegex res =
         {
             allocator,
@@ -550,7 +646,7 @@ fn NfaRegex? compile_regex(String regexStr, Options options, Allocator allocator
             allocator::new_array(allocator, ushort, edge_count),
             allocator::new_array(allocator, ushort, edge_count),
             allocator::new_array(allocator, EdgeData, edge_count),
-            classes.to_array(allocator),
+            allocated_classes,
             strings.copy_str(allocator),
             max_capture_group_index,
             options

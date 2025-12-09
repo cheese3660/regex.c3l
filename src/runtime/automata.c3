@@ -4,6 +4,7 @@
 module regex::runtime::automata;
 
 import regex;
+import regex::utf8;
 import std::collections::list;
 
 <*
@@ -203,7 +204,7 @@ fn uint NfaRegexStaticContext.get_new_capture_array_from(&self, ushort num_captu
 fn void NfaRegexStaticContext.update_capture_begin(&self, uint groupsIdx, ushort group, usz begin) @private 
 {
     usz* array_begin = self.allocated_captures[groupsIdx].begin;
-    array_begin[group] = begin;
+    array_begin[group-1] = begin;
 } 
 
 <*
@@ -220,7 +221,7 @@ fn void NfaRegexStaticContext.update_capture_begin(&self, uint groupsIdx, ushort
 fn void NfaRegexStaticContext.update_capture_end(&self, uint groupsIdx, ushort group, usz end) @private 
 {
     usz* array_end = self.allocated_captures[groupsIdx].end;
-    array_end[group] = end;
+    array_end[group-1] = end;
 } 
 
 <* Designed such that the stack is only consistent of 128 bit values *>
@@ -273,7 +274,7 @@ fn Match NfaRegexStackContext.to_match(self, CaptureEntry entry, String view, us
 }
 
 <*
-    Determine the consumption length for an edge
+    Determine the (minimum) consumption length for an edge
 
     @param [&in] self
     @param edge_offset   : "The index of the edge in the relevant tables"
@@ -283,7 +284,7 @@ fn Match NfaRegexStackContext.to_match(self, CaptureEntry entry, String view, us
 
     @return "How many characters are consumed by the given edge"
 *>
-fn usz NfaRegex.get_consumption_length(&self, usz edge_offset, CaptureEntry captures) @private 
+fn usz NfaRegex.get_min_consumption_length(&self, usz edge_offset, CaptureEntry captures) @private 
 {
     EdgeData data = self.edge_associated_data[edge_offset];
     switch (self.transition_type[edge_offset]) 
@@ -319,36 +320,101 @@ fn bool is_word_character(char c) @private
     return c.is_alnum() || c == '_';
 }
 
+
+<*
+    Determines if a string starts with another in a case insensitive manner
+
+    @param view   : "The string to be checking"
+    @param prefix : "The prefix to check for"
+
+    @return "If view starts with prefix"
+*>
+fn bool case_insensitive_starts_with(String view, String prefix) @private
+{
+    foreach (i, ch : prefix)
+    {
+        if (i >= view.len) return false;
+        if (view[i].to_lower() != ch.to_lower()) return false;
+    }
+    return true;
+}
+
 <*
     Determine if the automaton should transition at this edge
 
     @param [&in] self
-    @param edge_offset   : "The index of the edge in the relevant tables"
-    @param current_index : "The current index into the view"
-    @param view         : "The string being matched upon"
-    @param captures     : "The current capture array"
+    @param edge_offset              : "The index of the edge in the relevant tables"
+    @param current_index            : "The current index into the view"
+    @param view                     : "The string being matched upon"
+    @param captures                 : "The current capture array"
+    @param [&out] actually_consumed : "The actual amount consumed (needed due to utf8)"
 
     @require edge_offset < self.edge_count: "Edge is out of bounds"
 *>
-fn bool NfaRegex.should_transition(&self, usz edge_offset, usz current_index, String view, CaptureEntry captures) @private 
+fn bool NfaRegex.should_transition(&self, usz edge_offset, usz current_index, String view, CaptureEntry captures, usz* actually_consumed) @private 
 {
+    // Default is zero
+    *actually_consumed = 0;
     EdgeData data = self.edge_associated_data[edge_offset];
+    bool ascii_only = self.options & Options.ASCII_ONLY != 0;
+    bool single_line = self.options & Options.SINGLE_LINE != 0;
+    bool multiline = self.options & Options.MULTILINE != 0;
+    bool case_sensitive = self.options & Options.IGNORE_CASE == 0;
     switch (self.transition_type[edge_offset]) 
     {
         case EPSILON:
             return true;
         case WILDCARD:
-            if (self.options & Options.SINGLE_LINE) 
+            if (ascii_only)
             {
-                return true;
+                *actually_consumed = data.wildcard.repeat_count;
+                if (single_line) 
+                {
+                    return true;
+                }
+                for (usz i = current_index; i < current_index + data.wildcard.repeat_count; i++) 
+                {
+                    if (i >= view.len) return false;
+                    if (view[i] == '\n') return false;
+                }
             }
-            for (usz i = current_index; i < current_index + data.wildcard.repeat_count; i++) 
+            else
             {
-                if (view[i] == '\n') return false;
+                usz consumed = 0;
+                defer *actually_consumed = consumed;
+                for (usz i = 0; i < data.wildcard.repeat_count; i++)
+                {
+                    if (current_index + consumed >= view.len) return false;
+                    usz single_consumed;
+                    if (try result = utf8::get_character(view[current_index + consumed..], &single_consumed))
+                    {
+                        if (!single_line && result == '\n')
+                        {
+                            return false;
+                        }
+                        consumed += single_consumed;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
+                return true;
             }
             return true;
         case STRING:
-            return view[current_index..].starts_with((self.strings[data.string.begin:data.string.len]));
+            if (ascii_only)
+            {
+                *actually_consumed = data.string.len;
+                return case_sensitive
+                        ? view[current_index..].starts_with(self.strings[data.string.begin:data.string.len])
+                        : case_insensitive_starts_with(view[current_index..], self.strings[data.string.begin:data.string.len])
+                        ;
+            }
+            else
+            {
+                return utf8::starts_with(view[current_index..],self.strings[data.string.begin:data.string.len],actually_consumed, case_sensitive);
+            }
         case BACK_REFERENCE:
             usz begin = captures.begin[data.back_reference.capture_group_index - 1];
             usz end = captures.end[data.back_reference.capture_group_index - 1];
@@ -357,33 +423,107 @@ fn bool NfaRegex.should_transition(&self, usz edge_offset, usz current_index, St
             if (begin >= view.len) return false;
             if (end > view.len) return false;
             String to_check = view[begin..end-1];
-            for (usz i = 0; i < data.back_reference.repeat_count; i++) 
+            if (ascii_only)
             {
-                if (!view[current_index + (to_check.len * i)..].starts_with(to_check)) return false;
+                for (usz i = 0; i < data.back_reference.repeat_count; i++)
+                {
+                    if (case_sensitive)
+                    {
+                        if (!view[current_index + (to_check.len * i)..].starts_with(to_check)) return false;
+                    }
+                    else
+                    {
+                        if (!case_insensitive_starts_with(view[current_index + (to_check.len * i)..],to_check)) return false;
+                    }
+                }
+                *actually_consumed = to_check.len * data.back_reference.repeat_count;
+            }
+            else
+            {
+                usz consumed = 0;
+                defer *actually_consumed = consumed;
+                for (usz i = 0; i < data.back_reference.repeat_count; i++)
+                {
+                    if (current_index + consumed >= view.len) return false;
+                    usz single_consumed;
+                    if (!utf8::starts_with(view[current_index + consumed..],to_check, &single_consumed, case_sensitive)) return false;
+                    consumed += single_consumed;
+                }
             }
             return true;
         case POS_CHARACTER:
-            CharacterClass class = self.character_class[data.character.index];
-            for (usz i = current_index; i < current_index + data.character.repeat_count; i++) 
+            CharacterClass* class = &self.character_class[data.character.index];
+            if (ascii_only)
             {
-                if (!class[view[i]]) return false;
+                for (usz i = current_index; i < current_index + data.character.repeat_count; i++) 
+                {
+                    if (!class.has(view[i],!case_sensitive)) return false;
+                }
+                *actually_consumed = data.character.repeat_count;
+            }
+            else
+            {
+                usz index = current_index;
+
+                defer *actually_consumed = index - current_index;
+                for (usz i = 0; i < data.character.repeat_count; i++) 
+                {
+                    if (index >= view.len) return false;
+
+                    usz consumed;
+                    defer index += consumed;
+
+                    if (try c = utf8::get_character(view[index..],&consumed))
+                    {
+                        if (!class.has(c, !case_sensitive)) return false;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
             }
             return true;
         case NEG_CHARACTER:
-            CharacterClass class = self.character_class[data.character.index];
-            for (usz i = current_index; i < current_index + data.character.repeat_count; i++) 
+            CharacterClass* class = &self.character_class[data.character.index];
+            if (ascii_only)
             {
-                if (class[view[i]]) return false;
+                for (usz i = current_index; i < current_index + data.character.repeat_count; i++) 
+                {
+                    if (class.has(view[i],!case_sensitive)) return false;
+                }
+                *actually_consumed = data.character.repeat_count;
+            }
+            else
+            {
+                usz index = current_index;
+                defer *actually_consumed = index - current_index;
+                for (usz i = 0; i < data.character.repeat_count; i++) 
+                {
+                    if (index >= view.len) return false;
+
+                    usz consumed;
+                    defer index += consumed;
+
+                    if (try c = utf8::get_character(view[index..],&consumed))
+                    {
+                        if (class.has(c, !case_sensitive)) return false;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
             }
             return true;
         case START:
-            if (self.options & Options.MULTILINE) 
+            if (multiline) 
             {
                 return current_index == 0 || (view[current_index - 1] == '\n');
             }
             return current_index == 0;
         case END:
-            if (self.options & Options.MULTILINE) 
+            if (multiline) 
             {
                 return current_index == view.len || (view[current_index] == '\n');
             }
@@ -419,9 +559,11 @@ fn bool NfaRegex.should_transition(&self, usz edge_offset, usz current_index, St
             return  (is_word_character(view[current_index]) && is_word_character(view[current_index-1])) || 
                     (!is_word_character(view[current_index - 1]) && !is_word_character(view[current_index]));
         case POS_LOOKAHEAD:
-            return self.matches_at(view, current_index, data.sub_automaton_index, captures);
+            if (current_index >= view.len) return false;
+            return self.matches_at(view, current_index, data.sub_automaton_index, &captures);
         case NEG_LOOKAHEAD:
-            return !self.matches_at(view, current_index, data.sub_automaton_index, captures);
+            if (current_index >= view.len) return false;
+            return !self.matches_at(view, current_index, data.sub_automaton_index, &captures);
     }
 }
 
@@ -468,7 +610,7 @@ fn void NfaRegex.push_next_edge(
     else if
     (
         self.edge_capture_end[edge] &&
-        ctx.allocated_captures[capture_index].end [self.edge_capture_end[edge] - 1]== usz.max
+        ctx.allocated_captures[capture_index].end [self.edge_capture_end[edge] - 1] == usz.max
     ) 
     {
         uint next_group = ctx.get_new_capture_array_from(self.num_capture_groups, capture_index);
@@ -497,6 +639,7 @@ fn void NfaRegex.push_next_edge(
         });
     }
 }
+
 
 <*
     Try and get a match starting at the current offset in the view
@@ -540,19 +683,20 @@ fn Match? NfaRegex.match_in_view(&self, String view, usz offset, Allocator match
             offset
         });
 
-        while (try currentContext = context_stack.pop()) 
-        {    
-            uint capture_index = currentContext.p.capture_index;
+        while (try current_context = context_stack.pop()) 
+        {
+            uint capture_index = current_context.p.capture_index;
             defer static_context.allocated_captures[capture_index].ref_count -= 1;
             
-            uint state_index = currentContext.p.state_index;
-            ushort edge_index = currentContext.p.edge_index;
+
+            uint state_index = current_context.p.state_index;
+            ushort edge_index = current_context.p.edge_index;
             usz current_state_begin = self.state_edges_begin[state_index];
             uint edge_count = self.state_edge_count[state_index];
             usz edge_offset = current_state_begin + edge_index;
-            usz index = currentContext.view_index;
+            usz index = current_context.view_index;
 
-            if (state_index == end_state) return currentContext.to_match(static_context.allocated_captures[capture_index], view, self.num_capture_groups, offset, match_allocator);
+            if (state_index == end_state) return current_context.to_match(static_context.allocated_captures[capture_index], view, self.num_capture_groups, offset, match_allocator);
             
             // Push the next edge if there is one
             if (edge_index + 1 < edge_count) 
@@ -568,11 +712,11 @@ fn Match? NfaRegex.match_in_view(&self, String view, usz offset, Allocator match
                 });
             }
             
-            usz consumption_length = self.get_consumption_length(edge_offset, static_context.allocated_captures[capture_index]);
+            usz consumption_length = self.get_min_consumption_length(edge_offset, static_context.allocated_captures[capture_index]);
             
             if (index + consumption_length > view.len) continue;
             
-            if (!self.should_transition(edge_offset, index, view, static_context.allocated_captures[capture_index])) continue;
+            if (!self.should_transition(edge_offset, index, view, static_context.allocated_captures[capture_index], &consumption_length)) continue;
             
             self.push_next_edge(&static_context, &context_stack, edge_offset, index, capture_index, consumption_length);
         }
@@ -588,16 +732,17 @@ fn Match? NfaRegex.match_in_view(&self, String view, usz offset, Allocator match
     @param view                 : "The string view being matched over"
     @param offset               : "The offset in the view to match at"
     @param sub_automaton_index  : "The subautomaton to check"
-    @param capture_base         : "The parent capture group array"
+    @param capture_base         : "The parent capture group array, if there is one"
+    @param require_full         : "Does this require a full match?"
 
     @require offset < view.len : "Offset is out of bounds of the string"
     @require sub_automaton_index < self.automaton_count : "Invalid subautomaton index"
-    @require capture_base.ref_count > 0 : "The capture group array is deallocated"
+    @require capture_base == null || capture_base.ref_count > 0 : "The capture group array is deallocated"
 
     @return "If the sub-automaton matches at the given offset"
 
 *>
-fn bool NfaRegex.matches_at(&self, String view, usz offset, usz sub_automaton_index, CaptureEntry capture_base) 
+fn bool NfaRegex.matches_at(&self, String view, usz offset, usz sub_automaton_index, CaptureEntry* capture_base = null, bool require_full = false) @private
 {
     uint begin_state = self.automaton_begin[sub_automaton_index];
     uint end_state = self.automaton_end[sub_automaton_index];
@@ -611,8 +756,8 @@ fn bool NfaRegex.matches_at(&self, String view, usz offset, usz sub_automaton_in
         
         for (ushort i = 0 ; i < self.num_capture_groups; i++) 
         {
-            array_begin[i] = usz.max;
-            array_end[i] = usz.max;
+            array_begin[i] = capture_base ? capture_base.begin[i] : usz.max;
+            array_end[i] = capture_base ? capture_base.end[i] : usz.max;
         }
 
         List { NfaRegexStackContext } context_stack;
@@ -626,20 +771,26 @@ fn bool NfaRegex.matches_at(&self, String view, usz offset, usz sub_automaton_in
             offset
         });
 
-        while (try currentContext = context_stack.pop()) 
+        while (try current_context = context_stack.pop()) 
         {    
-            uint capture_index = currentContext.p.capture_index;
+            uint capture_index = current_context.p.capture_index;
             defer static_context.allocated_captures[capture_index].ref_count -= 1;
             
-            uint state_index = currentContext.p.state_index;
-            ushort edge_index = currentContext.p.edge_index;
+            uint state_index = current_context.p.state_index;
+            ushort edge_index = current_context.p.edge_index;
             usz current_state_begin = self.state_edges_begin[state_index];
             uint edge_count = self.state_edge_count[state_index];
             usz edge_offset = current_state_begin + edge_index;
-            usz index = currentContext.view_index;
+            usz index = current_context.view_index;
 
-            if (state_index == end_state) return true;
-            
+            if (state_index == end_state) {
+                if (require_full && index != view.len)
+                {
+                    continue;
+                }
+                return true;
+            }
+
             // Push the next edge if there is one
             if (edge_index + 1 < edge_count) 
             {
@@ -654,17 +805,30 @@ fn bool NfaRegex.matches_at(&self, String view, usz offset, usz sub_automaton_in
                 });
             }
             
-            usz consumption_length = self.get_consumption_length(edge_offset, static_context.allocated_captures[capture_index]);
+            usz consumption_length = self.get_min_consumption_length(edge_offset, static_context.allocated_captures[capture_index]);
             
             if (index + consumption_length > view.len) continue;
             
-            if (!self.should_transition(edge_offset, index, view, static_context.allocated_captures[capture_index])) continue;
+            if (!self.should_transition(edge_offset, index, view, static_context.allocated_captures[capture_index], &consumption_length)) continue;
 
             self.push_next_edge(&static_context, &context_stack, edge_offset, index, capture_index, consumption_length);
         }
 
         return false;
     };
+}
+
+<*
+    Check if the regex matches the entirety of the given string
+
+    @param [&in] self
+    @param view : "The string to match"
+
+    @return "Does the regex match the entire string"
+*>
+fn bool NfaRegex.matches(&self, String view) @dynamic
+{
+    return self.matches_at(view, 0, 0, require_full: true);
 }
 
 fn void NfaRegex.free(&self) @dynamic 
@@ -678,6 +842,10 @@ fn void NfaRegex.free(&self) @dynamic
     allocator::free(self.allocator, self.edge_capture_begin);
     allocator::free(self.allocator, self.edge_capture_end);
     allocator::free(self.allocator, self.edge_associated_data);
+    foreach (&class : self.character_class)
+    {
+        class.free();
+    }
     allocator::free(self.allocator, self.character_class);
     allocator::free(self.allocator, self.strings);
 }

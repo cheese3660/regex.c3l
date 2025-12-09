@@ -6,12 +6,14 @@ module regex::runtime::parsing;
 import regex;
 import regex::runtime::lexing;
 import regex::runtime::character_class;
+import regex::character_functions;
 
 <* What type of node is this node *>
 enum RegexNodeType : char
 {
     WILDCARD,               // .
-    STRING,                 // Any sequence of characters
+    CHARACTER,              // A single character, can be repeated any number of times
+                            // The lowering step is what will do the eventual character to string conversion
     BACKREF,                // A backreference (\x)
     CONCAT,                 // 2 nodes followed by eachother
     DISJUNCT,               // |
@@ -68,7 +70,11 @@ struct RegexNode
             RegexNode* rhs;
         }
 
-        DString string;
+        struct character
+        {
+            Char32 character;
+            uint repeat_count;
+        }
 
         uint repeat_count;
     }
@@ -100,9 +106,12 @@ fn RegexNode* concatenation(RegexNode* left, RegexNode* right) @private
     {
         switch (left.type)
         {
-            case STRING:
-                left.string.append_string(right.string);
-                return left;
+            case CHARACTER:
+                if (left.character.character == right.character.character)
+                {
+                    left.character.repeat_count += right.character.repeat_count;
+                    return left;
+                }
             case WILDCARD:
                 left.repeat_count += right.repeat_count;
                 return left;
@@ -112,22 +121,18 @@ fn RegexNode* concatenation(RegexNode* left, RegexNode* right) @private
                     left.backref.repeat_count += right.backref.repeat_count;
                     return left;
                 }
-            case NEGATIVE_CG:
-            case POSITIVE_CG:
-                if (left.character_group.class == right.character_group.class)
-                {
-                    left.character_group.repeat_count += right.character_group.repeat_count;
-                    return left;
-                }
             default:
         }
     }
     if (left.type == CONCAT && left.binary.rhs.type == right.type) {
         switch (right.type)
         {
-            case STRING:
-                left.binary.rhs.string.append_string(right.string);
-                return left;
+            case CHARACTER:
+                if (left.character.character == right.character.character)
+                {
+                    left.binary.rhs.character.repeat_count += right.character.repeat_count;
+                    return left;
+                }
             case WILDCARD:
                 left.binary.rhs.repeat_count += right.repeat_count;
                 return left;
@@ -135,13 +140,6 @@ fn RegexNode* concatenation(RegexNode* left, RegexNode* right) @private
                 if (left.binary.rhs.backref.group_id == right.backref.group_id)
                 {
                     left.binary.rhs.backref.repeat_count += right.backref.repeat_count;
-                    return left;
-                }
-            case NEGATIVE_CG:
-            case POSITIVE_CG:
-                if (left.binary.rhs.character_group.class == right.character_group.class)
-                {
-                    left.binary.rhs.character_group.repeat_count += right.character_group.repeat_count;
                     return left;
                 }
             default:
@@ -163,21 +161,17 @@ macro RegexNode* exactly(RegexNode* child, uint repeat) @private
     switch (child.type)
     {
         case WILDCARD:
-            child.repeat_count = repeat;
+            child.repeat_count *= repeat;
             return child;
-        case STRING:
-            String copy = child.string.tcopy_str();
-            for (uint i = 1; i < repeat; i++)
-            {
-                child.string.append_chars(copy);
-            }
+        case CHARACTER:
+            child.character.repeat_count *= repeat;
             return child;
         case BACKREF:
-            child.backref.repeat_count = repeat;
+            child.backref.repeat_count *= repeat;
             return child;
         case NEGATIVE_CG:
         case POSITIVE_CG:
-            child.character_group.repeat_count = repeat;
+            child.character_group.repeat_count *= repeat;
             return child;
         default:
             RegexNode* result = mem::talloc(RegexNode);
@@ -219,18 +213,13 @@ macro RegexNode* at_least(RegexNode* child, uint min) @private
     RegexNode* true_child;
     switch (child.type)
     {
+        case CHARACTER:
         case WILDCARD:
         case BACKREF:
         case NEGATIVE_CG:
         case POSITIVE_CG:
             true_child = mem::talloc(RegexNode);
             *true_child = *child;
-        case STRING:
-            true_child = mem::talloc(RegexNode);
-            true_child.type = STRING;
-            String copy = child.string.tcopy_str();
-            true_child.string.tinit(copy.len);
-            true_child.string.append_chars(copy);
         default:
             true_child = child;
     }
@@ -265,18 +254,13 @@ macro RegexNode*? between(RegexNode* child, uint min, uint max) @private
         RegexNode* true_child;
         switch (child.type)
         {
+            case CHARACTER:
             case WILDCARD:
             case BACKREF:
             case NEGATIVE_CG:
             case POSITIVE_CG:
                 true_child = mem::talloc(RegexNode);
                 *true_child = *child;
-            case STRING:
-                true_child = mem::talloc(RegexNode);
-                true_child.type = STRING;
-                String copy = child.string.tcopy_str();
-                true_child.string.tinit(copy.len);
-                true_child.string.append_chars(copy);
             default:
                 true_child = child;
         }
@@ -294,7 +278,6 @@ macro RegexNode*? between(RegexNode* child, uint min, uint max) @private
 *>
 macro RegexNode* character_class(CharacterClass class, RegexNodeType type) @private
 {
-    
     RegexNode* node = mem::talloc(RegexNode);
     node.type = type;
     node.character_group.class = class;
@@ -342,13 +325,14 @@ const RegexNode NOT_WORD_ANCHOR_STATIC @private = {
     Allocates on tmem so make sure a pool is set up
 
     @param regex : "The regex to be parsed"
+    @param options : "The options to be passed to the regex parser"
 
     @return "A parsed regex"
 *>
-fn RegexNode*? parse_regex(String regex)
+fn RegexNode*? parse_regex(String regex, Options options)
 {
     RegexParser parser = {
-        lexing::on(regex),
+        lexing::on(regex, options),
         1
     };
     return parser.expr();
@@ -466,11 +450,10 @@ fn RegexNode*? RegexParser.primary(&self) @private
         case CHARACTER:
         {
             // Build a string finally
-            DString str;
-            str.append_char(original.context.ch);
             RegexNode* result = mem::talloc(RegexNode);
-            result.type = STRING;
-            result.string = str;
+            result.type = CHARACTER;
+            result.character.character = original.context.ch;
+            result.character.repeat_count = 1;
             return result;
         }
         case POS_CG_BEGIN:
@@ -482,17 +465,29 @@ fn RegexNode*? RegexParser.primary(&self) @private
             *copy = WILDCARD_STATIC;
             return copy;
         case WORD:
-            return character_class(((CharacterClass){}).with_fn(&ascii::is_alnum).with_character('_'), POSITIVE_CG);
+            CharacterClass result;
+            result.add_fn(&character_functions::is_word);
+            return character_class(result, POSITIVE_CG);
         case NON_WORD:
-            return character_class(((CharacterClass){}).with_fn(&ascii::is_alnum).with_character('_'), NEGATIVE_CG);
+            CharacterClass result;
+            result.add_fn(&character_functions::is_word);
+            return character_class(result, NEGATIVE_CG);
         case WHITESPACE:
-            return character_class(((CharacterClass){}).with_fn(&ascii::is_space), POSITIVE_CG);
+            CharacterClass result;
+            result.add_fn(&character_functions::is_space);
+            return character_class(result, POSITIVE_CG);
         case NON_WHITESPACE:
-            return character_class(((CharacterClass){}).with_fn(&ascii::is_space), NEGATIVE_CG);
+            CharacterClass result;
+            result.add_fn(&character_functions::is_space);
+            return character_class(result, NEGATIVE_CG);
         case DIGIT:
-            return character_class(((CharacterClass){}).with_fn(&ascii::is_digit), POSITIVE_CG);
+            CharacterClass result;
+            result.add_fn(&character_functions::is_digit);
+            return character_class(result, POSITIVE_CG);
         case NON_DIGIT:
-            return character_class(((CharacterClass){}).with_fn(&ascii::is_digit), NEGATIVE_CG);
+            CharacterClass result;
+            result.add_fn(&character_functions::is_digit);
+            return character_class(result, NEGATIVE_CG);
         case BEGINNING:
             return &START_ANCHOR_STATIC;
         case END:
@@ -525,44 +520,44 @@ fn CharacterClass? RegexParser.class(&self) @private
     {
         switch (next.type) {
             case ALNUM_CLASS:
-                class = class.with_fn(&ascii::is_alnum);
+                class.add_fn(&character_functions::is_alnum);
             case ALPHA_CLASS:
-                class = class.with_fn(&ascii::is_alpha);
+                class.add_fn(&character_functions::is_alpha);
             case BLANK_CLASS:
-                class = class.with_fn(&ascii::is_blank);
+                class.add_fn(&character_functions::is_blank);
             case CNTRL_CLASS:
-                class = class.with_fn(&ascii::is_cntrl);
+                class.add_fn(&character_functions::is_cntrl);
             case GRAPH_CLASS:
-                class = class.with_fn(&ascii::is_graph);
+                class.add_fn(&character_functions::is_graph);
             case LOWER_CLASS:
-                class = class.with_fn(&ascii::is_lower);
+                class.add_fn(&character_functions::is_lower);
             case PRINT_CLASS:
-                class = class.with_fn(&ascii::is_print);
+                class.add_fn(&character_functions::is_print);
             case SPACE_CLASS:
-                class = class.with_fn(&ascii::is_space);
+                class.add_fn(&character_functions::is_space);
             case UPPER_CLASS:
-                class = class.with_fn(&ascii::is_upper);
+                class.add_fn(&character_functions::is_upper);
             case XDIGT_CLASS:
-                class = class.with_fn(&ascii::is_xdigit);
+                class.add_fn(&character_functions::is_xdigit);
+            case PUNCT_CLASS:
+                class.add_fn(&character_functions::is_punct);
             case DASH:
-                class = class.with_character('-');
+                class.add_character('-');
             case CHARACTER:
                 RegexToken possibleDash = self.tokenizer.get_next_token()!;
                 if (possibleDash.type == DASH) {
-                    RegexToken rangeEnd = self.tokenizer.get_next_token()!;
-                    if (rangeEnd.type == CHARACTER)
+                    RegexToken range_end = self.tokenizer.get_next_token()!;
+                    if (range_end.type == CHARACTER)
                     {
-                        char current = next.context.ch;
-                        do {
-                            class = class.with_character(current++);
-                        } while (current != rangeEnd.context.ch);
+                        class.add_range(next.context.ch, range_end.context.ch);
                     } else {
-                        self.tokenizer.backtrack(rangeEnd);
-                        class = class.with_character(next.context.ch).with_character('-');
+                        self.tokenizer.backtrack(range_end);
+                        class.add_character(next.context.ch);
+                        class.add_character('-');
                     }
                 } else {
                     self.tokenizer.backtrack(possibleDash);
-                    class = class.with_character(next.context.ch);
+                    class.add_character(next.context.ch);
                 }
             default:
                 return regex::UNEXPECTED_CHARACTER?;
