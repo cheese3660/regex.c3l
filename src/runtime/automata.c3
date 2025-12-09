@@ -5,7 +5,7 @@ module regex::runtime::automata;
 
 import regex;
 import regex::utf8;
-import regex::common;
+import regex::common::stack_context;
 import std::collections::list;
 
 <*
@@ -588,7 +588,6 @@ fn Match? NfaRegex.match_in_view(&self, String view, usz offset, Allocator match
     @require capture_base == null || capture_base.ref_count > 0 : "The capture group array is deallocated"
 
     @return "If the sub-automaton matches at the given offset"
-
 *>
 fn bool NfaRegex.matches_at(&self, String view, usz offset, usz sub_automaton_index, CaptureEntry* capture_base = null, bool require_full = false) @private
 {

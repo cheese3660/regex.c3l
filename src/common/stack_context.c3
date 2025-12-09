@@ -1,7 +1,7 @@
 <*
-    This module contains common code for the automata implementation on both the compiled and non-compiled versions
+    This module contains common stack code for the automata implementation on both the compiled and non-compiled versions
 *>
-module regex::common;
+module regex::common::stack_context;
 
 import std::collections::list;
 
