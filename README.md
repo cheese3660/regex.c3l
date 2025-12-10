@@ -53,3 +53,20 @@ while (try match = iter.next()) // Note this allocates on the temp allocator but
 io::printn(r.matches("ident123456")); // should print false
 io::printn(r.matches("iDeNt321")); // should print true
 ```
+
+## Regex Options
+
+### MULTILINE
+This makes `$` and `^` match on `\n` boundaries as well as the start and end of a string
+
+### SINGLE_LINE
+This makes `.` not reject `\n`
+
+### IGNORE_CASE
+This makes all comparisons case insensitive
+
+### ASCII_ONLY
+This makes regex parsing be performed solely treating the string as ASCII, as well as any comparisons when matching
+
+### NO_REDUCTION
+This disables the NFA optimization step, this will lead to a large regex in memory with more empty states
