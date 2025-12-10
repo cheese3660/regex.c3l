@@ -244,7 +244,7 @@ struct LoweringContext @private
     List { LoweredSubAutomaton }* sub_automata;
     List { CharacterClass }* character_internment_cache;
     DString* string_interment_cache;
-    HashSet { usz /* Node* */}* failed_string_conversions;
+    HashSet { uptr /* Node* */}* failed_string_conversions;
     ushort* max_capture_group_index;
     SingleAutomaton automaton;
     Options options;
@@ -340,8 +340,8 @@ faultdef IS_NOT_A_STRING_TREE;
 *>
 fn void? LoweringContext.get_string_build(&self, Node* node, DString* builder) @private
 {
-    if (self.failed_string_conversions.contains((usz)node)) return IS_NOT_A_STRING_TREE?;
-    defer catch self.failed_string_conversions.add((usz)node);
+    if (self.failed_string_conversions.contains((uptr)node)) return IS_NOT_A_STRING_TREE?;
+    defer catch self.failed_string_conversions.add((uptr)node);
 
     switch (node.type)
     {
