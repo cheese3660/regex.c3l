@@ -5,8 +5,8 @@ module regex::runtime::automata;
 
 import regex;
 import regex::utf8;
-import regex::common::stack_context;
-import regex::common::states;
+import regex::runtime::stack_context;
+import regex::runtime::states;
 import std::collections::list;
 
 union EdgeData 

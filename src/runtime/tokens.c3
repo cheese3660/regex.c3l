@@ -1,7 +1,7 @@
 <*
     This module contains information about tokens common to both implementations
 *>
-module regex::common::tokens;
+module regex::runtime::tokens;
 
 <* The escape sequence used by the regex engine, it is `\` because `\` can be easily written in a raw literal*>
 const ESCAPE_SEQUENCE = `\`;

@@ -7,7 +7,7 @@ import regex;
 import regex::runtime::lexing;
 import regex::runtime::character_class;
 import regex::character_functions;
-import regex::common::nodes;
+import regex::runtime::nodes;
 
 
 

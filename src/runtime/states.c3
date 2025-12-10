@@ -1,7 +1,7 @@
 <*
     This module contains common information about states common to both implementations
 *>
-module regex::common::states;
+module regex::runtime::states;
 
 <*
     The action of an edge in a state

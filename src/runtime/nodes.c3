@@ -1,7 +1,7 @@
 <*
     This module contains all the node types that regexen can have
 *>
-module regex::common::nodes;
+module regex::runtime::nodes;
 <* What type of node is this node *>
 enum NodeType : char
 {

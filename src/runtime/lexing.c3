@@ -6,7 +6,7 @@ module regex::runtime::lexing;
 import std::collections::list;
 import regex;
 import regex::utf8;
-import regex::common::tokens;
+import regex::runtime::tokens;
 
 struct TokenizerContext 
 {

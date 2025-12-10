@@ -1,7 +1,6 @@
 module regex;
 import regex::runtime::automata;
 import regex::runtime::lowering;
-import regex::compiled::compiled_regex;
 import std::io;
 
 alias RuntimeRegex = automata::NfaRegex;
@@ -48,7 +47,7 @@ enum Options : const char
 }
 
 <*
-    An interface for a regex implementation, done such that making compiled regular expressions can be much easier in the future
+    An interface for a regex implementation, done such that making other backends can be much easier in the future
 *>
 interface Regex 
 {
@@ -133,12 +132,6 @@ fn usz? Capture.to_format(&self, Formatter* formatter) @dynamic
 
 
 fn RuntimeRegex? make_runtime_regex(String regex, Options options, Allocator allocator) @inline => lowering::compile_regex(regex, options, allocator);
-
-macro compile_regex(String $regex, Options $options = Options.NONE)
-{
-    CompiledRegex {$regex, $options} regex;
-    return &regex;
-}
 
 <* 
     This is an iterator over regex matches
