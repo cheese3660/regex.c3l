@@ -7,41 +7,18 @@ import regex;
 import regex::runtime::lexing;
 import regex::runtime::character_class;
 import regex::character_functions;
+import regex::common::nodes;
 
-<* What type of node is this node *>
-enum RegexNodeType : char
-{
-    WILDCARD,               // .
-    CHARACTER,              // A single character, can be repeated any number of times
-                            // The lowering step is what will do the eventual character to string conversion
-    BACKREF,                // A backreference (\x)
-    CONCAT,                 // 2 nodes followed by eachother
-    DISJUNCT,               // |
-    NEGATIVE_CG,            // [^...]
-    POSITIVE_CG,            // [...]
-    START_ANCHOR,           // ^
-    END_ANCHOR,             // $
-    WORD_ANCHOR,            // \w
-    NOT_WORD_ANCHOR,        // \W
-    AT_LEAST,               // {x,}
-    AT_MOST,                // {,y} (this is actually to implement "BETWEEN" which is concat of exactly and at_most)
-    ONE_OR_MORE,            // +
-    ZERO_OR_MORE,           // *
-    ZERO_OR_ONE,            // ?
-    EXACTLY,                // {x}
-    CAPTURE_GROUP,          // (...)
-    POSITIVE_LOOKAHEAD,     // (?=...)
-    NEGATIVE_LOOKAHED,      // (?:...)
-}
 
-struct RegexNode
+
+struct Node
 {
-    RegexNodeType type;
+    NodeType type;
     union
     {
         struct node_and_number
         {
-            RegexNode* child;
+            Node* child;
             uint repeat_count;
         }
 
@@ -53,7 +30,7 @@ struct RegexNode
 
         struct capture_group
         {
-            RegexNode* child;
+            Node* child;
             ushort group_id;
         }
 
@@ -63,11 +40,11 @@ struct RegexNode
             uint repeat_count;
         }
 
-        RegexNode* child;
+        Node* child;
 
         struct binary {
-            RegexNode* lhs;
-            RegexNode* rhs;
+            Node* lhs;
+            Node* rhs;
         }
 
         struct character
@@ -85,9 +62,9 @@ struct RegexNode
 
     @return "A disjunction node between 2 regex nodes"
 *>
-macro RegexNode* disjunction(RegexNode* left, RegexNode* right) @private
+macro Node* disjunction(Node* left, Node* right) @private
 {
-    RegexNode* result = mem::talloc(RegexNode);
+    Node* result = mem::talloc(Node);
     result.type = DISJUNCT;
     result.binary.lhs = left;
     result.binary.rhs = right;
@@ -100,7 +77,7 @@ macro RegexNode* disjunction(RegexNode* left, RegexNode* right) @private
 
     @return "A node that represents the concatenation of 2 regex nodes"
 *>
-fn RegexNode* concatenation(RegexNode* left, RegexNode* right) @private
+fn Node* concatenation(Node* left, Node* right) @private
 {
     if (left.type == right.type) 
     {
@@ -145,7 +122,7 @@ fn RegexNode* concatenation(RegexNode* left, RegexNode* right) @private
             default:
         }
     }
-    RegexNode* result = mem::talloc(RegexNode);
+    Node* result = mem::talloc(Node);
     result.type = CONCAT;
     result.binary.lhs = left;
     result.binary.rhs = right;
@@ -155,7 +132,7 @@ fn RegexNode* concatenation(RegexNode* left, RegexNode* right) @private
 <*
     @return "A node that represents a regex node repeated exactly N times"
 *>
-macro RegexNode* exactly(RegexNode* child, uint repeat) @private
+macro Node* exactly(Node* child, uint repeat) @private
 {
     if (repeat == 1) return child;
     switch (child.type)
@@ -173,8 +150,11 @@ macro RegexNode* exactly(RegexNode* child, uint repeat) @private
         case POSITIVE_CG:
             child.character_group.repeat_count *= repeat;
             return child;
+        case EXACTLY:
+            child.node_and_number.repeat_count *= repeat;
+            return child;
         default:
-            RegexNode* result = mem::talloc(RegexNode);
+            Node* result = mem::talloc(Node);
             result.type = EXACTLY;
             result.node_and_number.child = child;
             result.node_and_number.repeat_count = repeat;
@@ -185,9 +165,9 @@ macro RegexNode* exactly(RegexNode* child, uint repeat) @private
 <*
     @return "A node representing a capture group"
 *>
-macro RegexNode* capture_group(RegexNode* child, ushort group_id) @private
+macro Node* capture_group(Node* child, ushort group_id) @private
 {
-    RegexNode* result = mem::talloc(RegexNode);
+    Node* result = mem::talloc(Node);
     result.type = CAPTURE_GROUP;
     result.capture_group.child = child;
     result.capture_group.group_id = group_id;
@@ -197,9 +177,9 @@ macro RegexNode* capture_group(RegexNode* child, ushort group_id) @private
 <*
     @return "A node of a given type with a single child"
 *>
-macro RegexNode* single_child(RegexNode* child, RegexNodeType type) @private
+macro Node* single_child(Node* child, NodeType type) @private
 {
-    RegexNode* result = mem::talloc(RegexNode);
+    Node* result = mem::talloc(Node);
     result.type = type;
     result.child = child;
     return result;
@@ -208,9 +188,9 @@ macro RegexNode* single_child(RegexNode* child, RegexNodeType type) @private
 <*
     @return "A node that represents a regex node repeated at least N times"
 *>
-macro RegexNode* at_least(RegexNode* child, uint min) @private
+macro Node* at_least(Node* child, uint min) @private
 {
-    RegexNode* true_child;
+    Node* true_child;
     switch (child.type)
     {
         case CHARACTER:
@@ -218,21 +198,22 @@ macro RegexNode* at_least(RegexNode* child, uint min) @private
         case BACKREF:
         case NEGATIVE_CG:
         case POSITIVE_CG:
-            true_child = mem::talloc(RegexNode);
+        case EXACTLY:
+            true_child = mem::talloc(Node);
             *true_child = *child;
         default:
             true_child = child;
     }
-    RegexNode* exact = exactly(child, min);
+    Node* exact = exactly(child, min);
     return concatenation(exact,single_child(true_child, ZERO_OR_MORE));
 }
 
 <*
     @return "A node that represents a regex node repeated at most N times"
 *>
-macro RegexNode* at_most(RegexNode* child, uint max) @private
+macro Node* at_most(Node* child, uint max) @private
 {
-    RegexNode* result = mem::talloc(RegexNode);
+    Node* result = mem::talloc(Node);
     result.type = AT_MOST;
     result.node_and_number.child = child;
     result.node_and_number.repeat_count = max;
@@ -242,7 +223,7 @@ macro RegexNode* at_most(RegexNode* child, uint max) @private
 <*
     @return "A node that represents a regex node repeated between min and max times"
 *>
-macro RegexNode*? between(RegexNode* child, uint min, uint max) @private
+macro Node*? between(Node* child, uint min, uint max) @private
 {
     if (min > max) 
     {
@@ -251,7 +232,7 @@ macro RegexNode*? between(RegexNode* child, uint min, uint max) @private
 
     if (min > 0) 
     {
-        RegexNode* true_child;
+        Node* true_child;
         switch (child.type)
         {
             case CHARACTER:
@@ -259,12 +240,13 @@ macro RegexNode*? between(RegexNode* child, uint min, uint max) @private
             case BACKREF:
             case NEGATIVE_CG:
             case POSITIVE_CG:
-                true_child = mem::talloc(RegexNode);
+            case EXACTLY:
+                true_child = mem::talloc(Node);
                 *true_child = *child;
             default:
                 true_child = child;
         }
-        RegexNode* exact = exactly(child, min);
+        Node* exact = exactly(child, min);
         return concatenation(exact, at_most(true_child, max - min));
     } 
     else 
@@ -276,9 +258,9 @@ macro RegexNode*? between(RegexNode* child, uint min, uint max) @private
 <*
     @return "A node that represents a character group [...] or \\d and \\w"
 *>
-macro RegexNode* character_class(CharacterClass class, RegexNodeType type) @private
+macro Node* character_class(CharacterClass class, NodeType type) @private
 {
-    RegexNode* node = mem::talloc(RegexNode);
+    Node* node = mem::talloc(Node);
     node.type = type;
     node.character_group.class = class;
     node.character_group.repeat_count = 1;
@@ -288,35 +270,35 @@ macro RegexNode* character_class(CharacterClass class, RegexNodeType type) @priv
 <*
     @return "A node that represents a backreference"
 *>
-macro RegexNode*? backreference(uint num) @private
+macro Node*? backreference(uint num) @private
 {
     if (num > 65535) return regex::INVALID_CAPTURE_GROUP_ID?;
     
-    RegexNode* node = mem::talloc(RegexNode);
+    Node* node = mem::talloc(Node);
     node.type = BACKREF;
     node.backref.group_id = (ushort)num;
     node.backref.repeat_count = 1;
     return node;
 }
 
-const RegexNode WILDCARD_STATIC @private = {
+const Node WILDCARD_STATIC @private = {
     .type = WILDCARD,
     .repeat_count = 1
 };
 
-const RegexNode START_ANCHOR_STATIC @private = {
+const Node START_ANCHOR_STATIC @private = {
     .type = START_ANCHOR
 };
 
-const RegexNode END_ANCHOR_STATIC @private = {
+const Node END_ANCHOR_STATIC @private = {
     .type = END_ANCHOR
 };
 
-const RegexNode WORD_ANCHOR_STATIC @private = {
+const Node WORD_ANCHOR_STATIC @private = {
     .type = WORD_ANCHOR
 };
 
-const RegexNode NOT_WORD_ANCHOR_STATIC @private = {
+const Node NOT_WORD_ANCHOR_STATIC @private = {
     .type = NOT_WORD_ANCHOR
 };
 
@@ -329,7 +311,7 @@ const RegexNode NOT_WORD_ANCHOR_STATIC @private = {
 
     @return "A parsed regex"
 *>
-fn RegexNode*? parse_regex(String regex, Options options)
+fn Node*? parse_regex(String regex, Options options)
 {
     RegexParser parser = {
         lexing::on(regex, options),
@@ -361,9 +343,9 @@ fn ushort? RegexParser.next_cg(&self) @private
 
     @return "A regex node allocated using tmem"
 *>
-fn RegexNode*? RegexParser.expr(&self, bool return_on_gp_end = false) @private
+fn Node*? RegexParser.expr(&self, bool return_on_gp_end = false) @private
 {
-    RegexNode* previous = self.quantified()!;
+    Node* previous = self.quantified()!;
     while (!self.tokenizer.done())
     {
         RegexToken next = self.tokenizer.get_next_token()!;
@@ -394,10 +376,10 @@ fn RegexNode*? RegexParser.expr(&self, bool return_on_gp_end = false) @private
 
     @return "A regex node allocated using tmem"
 *>
-fn RegexNode*? RegexParser.quantified(&self) @private
+fn Node*? RegexParser.quantified(&self) @private
 {
     
-    RegexNode* primary = self.primary()!;
+    Node* primary = self.primary()!;
 
     if (self.tokenizer.done()) return primary;
 
@@ -443,7 +425,7 @@ fn RegexNode*? RegexParser.quantified(&self) @private
 
     @return "A regex node allocated using tmem"
 *>
-fn RegexNode*? RegexParser.primary(&self) @private
+fn Node*? RegexParser.primary(&self) @private
 {
     
     RegexToken original = self.tokenizer.get_next_token()!;
@@ -453,7 +435,7 @@ fn RegexNode*? RegexParser.primary(&self) @private
         case CHARACTER:
         {
             // Build a string finally
-            RegexNode* result = mem::talloc(RegexNode);
+            Node* result = mem::talloc(Node);
             result.type = CHARACTER;
             result.character.character = original.context.ch;
             result.character.repeat_count = 1;
@@ -464,7 +446,7 @@ fn RegexNode*? RegexParser.primary(&self) @private
         case NEG_CG_BEGIN:
             return character_class(self.class()!, NEGATIVE_CG);
         case WILDCARD:
-            RegexNode* copy = mem::talloc(RegexNode);
+            Node* copy = mem::talloc(Node);
             *copy = WILDCARD_STATIC;
             return copy;
         case WORD:
@@ -549,8 +531,8 @@ fn CharacterClass? RegexParser.class(&self) @private
             case DASH:
                 class.add_character('-');
             case CHARACTER:
-                RegexToken possibleDash = self.tokenizer.get_next_token()!;
-                if (possibleDash.type == DASH) {
+                RegexToken pos_dash = self.tokenizer.get_next_token()!;
+                if (pos_dash.type == DASH) {
                     RegexToken range_end = self.tokenizer.get_next_token()!;
                     if (range_end.type == CHARACTER)
                     {
@@ -561,7 +543,7 @@ fn CharacterClass? RegexParser.class(&self) @private
                         class.add_character('-');
                     }
                 } else {
-                    self.tokenizer.backtrack(possibleDash);
+                    self.tokenizer.backtrack(pos_dash);
                     class.add_character(next.context.ch);
                 }
             default:
