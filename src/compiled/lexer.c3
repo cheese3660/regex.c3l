@@ -144,6 +144,7 @@ macro TokenizerResult get_next_token(LexerContext $self)
     $if $self.has_stored_backtrack:
         return
         {
+            $self.stored_backtrack,
             {
                 $self.view,
                 $self.mode,
@@ -151,42 +152,40 @@ macro TokenizerResult get_next_token(LexerContext $self)
                 {},
                 $self.options
             },
-            $self.stored_backtrack,
-            
+        };
+    $else
+        $if $self.view.len == 0:
+            $switch $self.mode:
+                $case TokenizerMode.IN_CG:
+                    $assert false : "Unterminated character group!";
+                $case TokenizerMode.IN_RQ:
+                    $assert false : "Unterminated range quantifier!";
+                $default:
+                    $assert false : "Unexpected end of input!";
+            $endswitch
+        $endif
+
+        SingleTokenizeResult $result;
+        var $copy;
+
+        $switch $self.mode:
+            $case TokenizerMode.DEFLT:
+                $result = deflt($self);
+                $copy = with_mode_view($self, $result.token.type.next_state_regular, $result.continuation);
+            $case TokenizerMode.IN_RQ:
+                $result = rq($self);
+                $copy = with_mode_view($self, $result.token.type.next_state_rq, $result.continuation);
+            $case TokenizerMode.IN_CG:
+                $result = cg($self);
+                $copy = with_mode_view($self, $result.token.type.next_state_cg, $result.continuation);
+        $endswitch
+
+        return
+        {
+            $result.token,
+            $copy
         };
     $endif
-
-    $if $self.view.len == 0:
-        $switch $self.mode:
-            $case TokenizerMode.IN_CG:
-                $assert false : "Unterminated character group!";
-            $case TokenizerMode.IN_RQ:
-                $assert false : "Unterminated range quantifier!";
-            $default:
-                $assert false : "Unexpected end of input!";
-        $endswitch
-    $endif
-
-    SingleTokenizeResult $result;
-    var $copy;
-
-    $switch $self.mode:
-        $case TokenizerMode.DEFLT:
-            $result = deflt($self);
-            $copy = with_mode_view($self, $result.token.type.next_state_regular, $result.continuation);
-        $case TokenizerMode.IN_RQ:
-            $result = rq($self);
-            $copy = with_mode_view($self, $result.token.type.next_state_rq, $result.continuation);
-        $case TokenizerMode.IN_CG:
-            $result = cg($self);
-            $copy = with_mode_view($self, $result.token.type.next_state_cg, $result.continuation);
-    $endswitch
-
-    return
-    {
-        $result.token,
-        $copy
-    };
 }
 
 macro bool starts_with(String $check, String $prefix) @private
@@ -351,9 +350,9 @@ macro SingleTokenizeResult cg(LexerContext $self) @private
             return
             {
                 {
-                    .type = entry.type
+                    .type = $entry.type
                 },
-                substr($regex, $entry.len)
+                substr($regex, $entry.prefix.len)
             };
         $endif
     $endfor

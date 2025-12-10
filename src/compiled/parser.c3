@@ -15,9 +15,7 @@ import regex::common::tokens;
 struct Node
 {
     NodeType type;
-    // usz[] children; // These are the indices of the nodes children
-    uint first_child;
-    uint second_child;
+    uint[] children; // These are the indices of the nodes children
     uint repeat_count;
     uint group_id;
     ComptimeClass class;
@@ -29,9 +27,47 @@ macro Node repeat_count(Node $self, uint $new_repeat_count)
     return
     {
         $self.type,
-        $self.first_child,
-        $self.second_child,
+        $self.children,
         $new_repeat_count,
+        $self.group_id,
+        $self.class,
+        $self.character
+    };
+}
+
+macro Node combine_children(Node $self, Node $other)
+{
+    return
+    {
+        $self.type,
+        $self.children +++ $other.children,
+        $self.repeat_count,
+        $self.group_id,
+        $self.class,
+        $self.character
+    };
+}
+
+macro Node prepend_child(Node $self, uint $index)
+{
+    return
+    {
+        $self.type,
+        (uint[]){$index} +++ $self.children,
+        $self.repeat_count,
+        $self.group_id,
+        $self.class,
+        $self.character
+    };
+}
+
+macro Node postpend_child(Node $self, uint $index)
+{
+    return
+    {
+        $self.type,
+        $self.children +++ (uint[]){$index},
+        $self.repeat_count,
         $self.group_id,
         $self.class,
         $self.character
@@ -88,7 +124,7 @@ macro ParserContext backtrack(ParserContext $self, RegexToken $token)
 {
     return
     {
-        $self.lexer.backtrack($token),
+        lexer::backtrack($self.lexer,$token),
         $self.tree,
         $self.capture_group
     };
@@ -147,7 +183,7 @@ struct NewCaptureGroup
 macro NewCaptureGroup next_cg(ParserContext $self)
 {
     $assert $self.capture_group < ushort.max - 1 : "Regex is too complex!";
-    ushort $result = $self.capture + 1;
+    ushort $result = $self.capture_group + 1;
     return
     {
         $result,
@@ -164,18 +200,60 @@ macro ParserContext replace(ParserContext $self, uint $index, Node $value)
     return
     {
         $self.lexer,
-        st_rep_node($self.tree, $index, $value)
+        st_rep_node($self.tree, $index, $value),
+        $self.capture_group
     };
+}
+
+macro NewNode disjunction(ParserContext $self, uint $left_index, uint $right_index)
+{
+
+    var $left = $self.tree.nodes[$left_index];
+    var $right = $self.tree.nodes[$right_index];
+    $if $left.type == DISJUNCT:
+        $if $right.type == DISJUNCT:
+            return
+            {
+                $left_index,
+                replace($self, $left_index, combine_children($left, $right))
+            };
+        $else
+            return
+            {
+                $left_index,
+                replace($self, $left_index, postpend_child($left, $right_index))
+            };
+        $endif
+    $else
+        $if $right.type == DISJUNCT:
+            return
+            {
+                $right_index,
+                replace($self, $right_index, prepend_child($right, $left_index))
+            };
+        $else
+            return new($self, {.type = DISJUNCT, .children = (uint[]){$left_index,$right_index}});
+        $endif
+    $endif
 }
 
 macro NewNode concatenation(ParserContext $self, uint $left_index, uint $right_index)
 {
     var $left = $self.tree.nodes[$left_index];
     var $right = $self.tree.nodes[$right_index];
+    bool $continue = true;
     $if $left.type == $right.type:
         $switch $left.type:
+            $case NodeType.CONCAT:
+                $continue = false;
+                return
+                {
+                    $left_index,
+                    replace($left, $left_index, combine_children($left, $right))
+                };
             $case NodeType.CHARACTER:
                 $if $left.character == $right.character:
+                    $continue = false;
                     return
                     {
                         $left_index,
@@ -183,12 +261,14 @@ macro NewNode concatenation(ParserContext $self, uint $left_index, uint $right_i
                     };
                 $endif
             $case NodeType.WILDCARD:
+                $continue = false;
                 return
                 {
                     $left_index,
                     replace($self, $left_index, repeat_count($left, $left.repeat_count + $right.repeat_count))
                 };
             $case NodeType.BACKREF:
+                $continue = false;
                 $if $left.group_id == $right.group_id:
                     return
                     {
@@ -198,39 +278,52 @@ macro NewNode concatenation(ParserContext $self, uint $left_index, uint $right_i
                 $endif
         $endswitch
     $endif
-    $if $left.type == NodeType.CONCAT && $self.tree.nodes[$left.second_child] == $right.type:
-        $switch $right.type:
-            $case NodeType.CHARACTER:
-                $if $left.character == $right.character:
-                    return
-                    {
-                        $left.second_child,
-                        replace($self, $left.second_child, repeat_count($self.tree.nodes[$left.second_child], $self.tree.nodes[$left.second_child].repeat_count + $right.repeat_count))
-                    };
-                $endif
-            $case NodeType.WILDCARD:
+    $if $continue &&& $left.type == CONCAT:
+        $continue = false;
+        Node $last = $self.tree.nodes[$left.children[$left.children.len-1]];
+        $switch:
+            $case $last.type == CHARACTER &&& $right.type == CHARACTER &&& $left.character == $right.character:
                 return
                 {
-                    $left.second_child,
-                    replace($self, $left.second_child, repeat_count($self.tree.nodes[$left.second_child], $self.tree.nodes[$left.second_child].repeat_count + $right.repeat_count))
+                    $left_index,
+                    replace($self, $left.children[$left.children.len-1], repeat_count($last, $last.repeat_count + $right.repeat_count))
                 };
-            $case NodeType.BACKREF:
-                $if $left.group_id == $right.group_id:
-                    return
-                    {
-                        $left.second_child,
-                        replace($self, $left.second_child, repeat_count($self.tree.nodes[$left.second_child].repeat_count + $right.repeat_count))
-                    };
-                $endif
+            $case $last.type == WILDCARD &&& $right.type == WILDCARD:
+                return
+                {
+                    $left_index,
+                    replace($self, $left.children[$left.children.len-1], repeat_count($last, $last.repeat_count + $right.repeat_count))
+                };
+            $case $last.type == BACKREF &&& $right.type == BACKREF &&& $left.group_id == $right.group_id:
+                return
+                {
+                    $left_index,
+                    replace($self, $left.children[$left.children.len-1], repeat_count($last, $last.repeat_count + $right.repeat_count))
+                };
+            $default:
+                return
+                {
+                    $left_index,
+                    replace($self, $left_index, postpend_child($left, $right_index))
+                };
         $endswitch
     $endif
-    return new($self,
+    $if $continue &&& $right.type == CONCAT:
+        $continue = false;
+        return
         {
-            .type = CONCAT,
-            .first_child = $left_index,
-            .second_child = $right_index
-        }
-    );
+            $right_index,
+            replace($self, $right_index, prepend_child($right,$left_index))
+        };
+    $endif
+    $if $continue:
+        return new($self,
+            {
+                .type = CONCAT,
+                .children = (uint[]){$left_index, $right_index}
+            }
+        );
+    $endif
 }
 
 macro NewNode exactly(ParserContext $self, uint $child_index, uint $repeat)
@@ -240,34 +333,30 @@ macro NewNode exactly(ParserContext $self, uint $child_index, uint $repeat)
             $child_index,
             $self
         };
-    $endif
-    // var $child = $self.tree.nodes[$child_index];
-    var $nodes = $self.tree.nodes;
-    var $child = $nodes[$child_index];
-    $echo $child_index;
-    $echo $nodes;
-    $echo $child;
-    $switch $child.type:
-        $case WILDCARD:
-        $case CHARACTER:
-        $case BACKREF:
-        $case NEGATIVE_CG:
-        $case POSITIVE_CG:
-        $case EXACTLY:
-            return
-            {
-                $child_index,
-                replace($self, $child_index, repeat_count($child, $child.repeat_count * $repeat))
-            };
-        $default:
-            return new($self,
+    $else
+        var $child = $self.tree.nodes[$child_index];
+        $switch $child.type:
+            $case WILDCARD:
+            $case CHARACTER:
+            $case BACKREF:
+            $case NEGATIVE_CG:
+            $case POSITIVE_CG:
+            $case EXACTLY:
+                return
                 {
-                    .type = EXACTLY,
-                    .first_child = $child_index,
-                    .repeat_count = $repeat
-                }
-            );
-    $endswitch
+                    $child_index,
+                    replace($self, $child_index, repeat_count($child, $child.repeat_count * $repeat))
+                };
+            $default:
+                return new($self,
+                    {
+                        .type = EXACTLY,
+                        .children = (uint[]){$child_index},
+                        .repeat_count = $repeat
+                    }
+                );
+        $endswitch
+    $endif
 }
 
 macro NewNode at_least(ParserContext $self, uint $child_index, uint $min)
@@ -289,7 +378,7 @@ macro NewNode at_least(ParserContext $self, uint $child_index, uint $min)
     $endswitch
     var $exact = exactly($self, $child_index, $min);
     $self = $exact.context;
-    var $zero_or_more = new($self, {.type = ZERO_OR_MORE, .first_child = $true_child});
+    var $zero_or_more = new($self, {.type = ZERO_OR_MORE, .children = (uint[]){$true_child}});
     $self = $zero_or_more.context;
     return concatenation($self, $exact.index, $zero_or_more.index);
 }
@@ -316,7 +405,7 @@ macro NewNode between(ParserContext $self, uint $child_index, uint $min, uint $m
         $endswitch
         var $exact = exactly($self, $child_index, $min);
         $self = $exact.context;
-        var $at_most = new($self, {.type = AT_MOST, .first_child = $true_child, .repeat_count = $max - $min});
+        var $at_most = new($self, {.type = AT_MOST, .children = (uint[])($true_child), .repeat_count = $max - $min});
         $self = $at_most.context;
         return concatenation($self, $exact.index, $at_most.index);
     $else
@@ -342,7 +431,7 @@ macro NewNode expr(ParserContext $self, bool $return_on_gp_end = false)
     uint $previous = $previous_n.index;
     bool $running = true;
     // We want a while loop here basically
-    $for usz i = 0; $running &&& !done($self); i++:
+    $for var $i = 0; $running &&& !done($self); $i++:
         NextToken $next_t = next($self);
         $self = $next_t.context;
         RegexToken $next = $next_t.token;
@@ -358,18 +447,16 @@ macro NewNode expr(ParserContext $self, bool $return_on_gp_end = false)
 
             $case !$return_on_gp_end &&& $next.type == GROUP_END:
                 $error "Extraneous parentheses!";
-            
-            $case next.type == SEPARATOR:
+            $case $next.type == SEPARATOR:
                 NewNode $expr_n = expr($self, $return_on_gp_end);
                 $self = $expr_n.context;
                 uint $expr = $expr_n.index;
-                return new($self, {.type = DISJUNCT, .first_child = $previous, .second_child = $expr});
-
+                return disjunction($self, $previous, $expr);
             $default:
-                $self = $self.backtrack($next);
+                $self = backtrack($self,$next);
                 NewNode $quantified_n = quantified($self);
                 $self = $quantified_n.context;
-                uint $quantified = $quantified_n.next;
+                uint $quantified = $quantified_n.index;
                 $previous_n = concatenation($self, $previous, $quantified);
                 $self = $previous_n.context;
                 $previous = $previous_n.index;
@@ -415,18 +502,18 @@ macro NewNode quantified(ParserContext $self)
                         $peek_n = next($self);
                         $self = $peek_n.context;
                         $if $peek_n.token.type == RQ_END:
-                            return between($self, $primary_n.index, $begin);
+                            return between($self, $primary_n.index, $begin, $end);
                         $else
                             $error "Invalid range quantifier!";
                         $endif
                     $endif
                 $endif
             $case ONE_OR_MORE:
-                return new($self, {.type = ONE_OR_MORE, .first_child = $primary_n.index});
+                return new($self, {.type = ONE_OR_MORE, .children = (uint[]){$primary_n.index}});
             $case ZERO_OR_MORE:
-                return new($self, {.type = ZERO_OR_MORE, .first_child = $primary_n.index});
+                return new($self, {.type = ZERO_OR_MORE, .children = (uint[]){$primary_n.index}});
             $case ZERO_OR_ONE:
-                return new($self, {.type = ZERO_OR_ONE, .first_child = $primary_n.index});
+                return new($self, {.type = ZERO_OR_ONE, .children = (uint[]){$primary_n.index}});
             $default:
                 return $primary_n;
         $endswitch
@@ -471,15 +558,15 @@ macro NewNode primary(ParserContext $self)
         $case GROUP_OPEN:
             NewCaptureGroup $group_n = next_cg($self);
             NewNode $expr_n = expr($group_n.context,true);
-            return new($expr_n.context, {.type = CAPTURE_GROUP, .group_id = $group_n.index, .first_child = $expr_n.index});
+            return new($expr_n.context, {.type = CAPTURE_GROUP, .group_id = $group_n.index, .children = (uint[]){$expr_n.index}});
         $case NO_BR_GROUP_OPEN:
             return expr($self,true);
         $case POS_LOOK:
             NewNode $expr_n = expr($self,true);
-            return new($expr_n.context, {.type = POSITIVE_LOOKAHEAD, .first_child = $expr_n.index});
+            return new($expr_n.context, {.type = POSITIVE_LOOKAHEAD, .children = (uint[]){$expr_n.index}});
         $case NEGATIVE_LOOKAHEAD:
             NewNode $expr_n = expr($self,true);
-            return new($expr_n.context, {.type = NEGATIVE_LOOKAHEAD, .first_child = $expr_n.index});
+            return new($expr_n.context, {.type = NEGATIVE_LOOKAHEAD, .children = (uint[]){$expr_n.index}});
         $case BACKREFERENCE:
             $assert $self.capture_group >= $peek.token.context.num : "Invalid capture group ID for backreference!";
             return new($self, {.type = BACKREF, .group_id = (ushort)$peek.token.context.num});
@@ -505,43 +592,43 @@ macro NewClass class(ParserContext $self)
     $for usz $i = 0; $next_n.token.type != CG_END; $i++:
         $switch $next_n.token.type:
             $case ALNUM_CLASS:
-                $class = is_alnum($class);
+                $class = class::is_alnum($class);
             $case ALPHA_CLASS:
-                $class = is_alpha($class);
+                $class = class::is_alpha($class);
             $case BLANK_CLASS:
-                $class = is_blank($class);
+                $class = class::is_blank($class);
             $case CNTRL_CLASS:
-                $class = is_cntrl($class);
+                $class = class::is_cntrl($class);
             $case GRAPH_CLASS:
-                $class = is_graph($class);
+                $class = class::is_graph($class);
             $case LOWER_CLASS:
-                $class = is_lower($class);
+                $class = class::is_lower($class);
             $case PRINT_CLASS:
-                $class = is_print($class);
+                $class = class::is_print($class);
             $case SPACE_CLASS:
-                $class = is_space($class);
+                $class = class::is_space($class);
             $case UPPER_CLASS:
-                $class = is_upper($class);
+                $class = class::is_upper($class);
             $case XDIGT_CLASS:
-                $class = is_xdigt($class);
+                $class = class::is_xdigt($class);
             $case PUNCT_CLASS:
-                $class = is_punct($class);
+                $class = class::is_punct($class);
             $case DIGIT_CLASS:
-                $class = is_digit($class);
+                $class = class::is_digit($class);
             $case DASH:
-                $class = with($class, '-');
+                $class = class::with($class, '-');
             $case CHARACTER:
                 NextToken $pos_dash = next($self);
                 $if $pos_dash.token.type == DASH:
                     NextToken $range_end = next($pos_dash.context);
                     $if $range_end.token.type == CHARACTER:
-                        $class = range($class, $next_n.token.context.ch, $range_end.token.context.ch);
+                        $class = class::range($class, $next_n.token.context.ch, $range_end.token.context.ch);
                         $self = $range_end.context;
                     $else
-                        $class = with($class, $next_n.token.context.ch);
+                        $class = class::with($class, $next_n.token.context.ch);
                     $endif
                 $else
-                    $class = with($class, $next_n.token.context.ch);
+                    $class = class::with($class, $next_n.token.context.ch);
                 $endif
             $default:
                 $error "Unexpected character!";
@@ -557,7 +644,7 @@ macro NewClass class(ParserContext $self)
     };
 }
 
-fn void dump_parse()
-{
-    parse(`(?:\d{3})+`,NONE);
-}
+// fn void dump_parse()
+// {
+//     parse(`^(?=(?:.*[A-Z]){2})(?=(?:.*[a-z]){2})(?=.*\\d).{8,15}$`,NONE);
+// }

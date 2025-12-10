@@ -8,6 +8,7 @@ import regex::runtime::parsing;
 import regex::utf8;
 import std::collections::list;
 import std::collections::set;
+import regex::common::states;
 
 
 <*

@@ -14,6 +14,8 @@ const bool MULTILINE @private = (REGEX_OPTIONS & Options.MULTILINE) != 0;
 const bool SINGLE_LINE @private = (REGEX_OPTIONS & Options.SINGLE_LINE) != 0;
 const bool IGNORE_CASE @private =(REGEX_OPTIONS & Options.IGNORE_CASE) != 0;
 const bool ASCII_ONLY @private = (REGEX_OPTIONS & Options.ASCII_ONLY) != 0;
+const bool NO_REDUCTION @private = (REGEX_OPTIONS & Options.NO_REDUCTION) != 0;
+
 
 <*
     Define a compiled regex as a char because it doesn't exactly matter

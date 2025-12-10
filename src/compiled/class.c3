@@ -52,12 +52,12 @@ macro ComptimeClass with(ComptimeClass $self, Char32 ch)
     };
 }
 
-macro ComptimeClass range(ComptimeClass $self, Char32 min, Char32 max)
+macro ComptimeClass range(ComptimeClass $self, Char32 $min, Char32 $max)
 {
     return
     {
         $self.with,
-        $self.ranges +++ {{min,max}},
+        $self.ranges +++ (ComptimeRange[]){{$min,$max}},
         $self.is_word,
         $self.is_alnum,
         $self.is_space,

@@ -21,12 +21,12 @@ macro SliceT slice(SliceT $from, usz $start, usz $end = usz.max)
 macro SliceT insert(SliceT $array, usz $position, ValueT $value)
 {
     $if $position == $array.len:
-        return $array +++ {$value};
+        return $array +++ (SliceT){$value};
     $else
         $if $position == 0:
-            return {$value} +++ {$array};
+            return (SliceT){$value} +++ $array;
         $else
-            return slice($array, 0, $position) +++ {$value} +++ slice($array, $position);
+            return slice($array, 0, $position) +++ (SliceT){$value} +++ slice($array, $position);
         $endif
     $endif
 }
