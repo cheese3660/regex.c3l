@@ -106,11 +106,22 @@ fn usz? Match.to_format(&self, Formatter* formatter) @dynamic
 *>
 fn Capture Match.get(&self, usz i) @operator([]) 
 {
-    return {
-        self.full_view[self.capture_begin[i]..self.capture_end[i] - 1],
-        self.capture_begin[i],
-        self.capture_end[i]
-    };
+    if (self.capture_begin[i] == usz.max || self.capture_end[i] == usz.max)
+    {
+        return {
+            "",
+            self.capture_begin[i],
+            self.capture_end[i]
+        }
+    }
+    else
+    {
+        return {
+            self.full_view[self.capture_begin[i]..self.capture_end[i] - 1],
+            self.capture_begin[i],
+            self.capture_end[i]
+        };
+    }
 }
 
 fn usz Match.len(&self) @operator(len) 
@@ -125,9 +136,21 @@ struct Capture (Printable)
     usz end;
 }
 
+fn bool Capture.valid(&self)
+{
+    return self.begin != usz.max && self.end != usz.max;
+}
+
 fn usz? Capture.to_format(&self, Formatter* formatter) @dynamic
 {
-    return formatter.printf("Capture @ [%d, %d): %s", self.begin, self.end, self.captured);
+    if (self.valid())
+    {
+        return formatter.printf("Capture @ [%d, %d): %s", self.begin, self.end, self.captured);
+    }
+    else
+    {
+        return formatter.printf("<invalid capture>");
+    }
 }
 
 
