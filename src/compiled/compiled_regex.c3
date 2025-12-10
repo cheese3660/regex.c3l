@@ -22,13 +22,15 @@ const bool NO_REDUCTION @private = (REGEX_OPTIONS & Options.NO_REDUCTION) != 0;
 *>
 typedef CompiledRegex = char;
 
+
+
 <*
     Try and get a match starting at the current offset in the view
 
     @param [&in] self
     @param view: "The string view being matched over"
     @param offset: "The offset in the view to match at"
-    @param match_allocator: "The allocator being used to allocate the array of captures"
+    @param [&in] match_allocator: "The allocator being used to allocate the array of captures"
 
     @require offset < view.len
 
@@ -37,7 +39,7 @@ typedef CompiledRegex = char;
 *>
 fn Match? CompiledRegex.match_in_view(&self, String view, usz offset, Allocator match_allocator) @dynamic 
 {
-    unreachable();
+    return match_common(view, offset, match_allocator: match_allocator);
 }
 
 <*
@@ -55,9 +57,16 @@ fn Match? CompiledRegex.match_in_view(&self, String view, usz offset, Allocator 
 
     @return "If the sub-automaton matches at the given offset"
 *>
-fn bool matches_at(String view, uint offset=0, ushort sub_automaton_index = 0, CaptureEntry* capture_base, bool require_full=false)
+fn bool matches_at(String view, uint offset=0, ushort sub_automaton_index = 0, CaptureEntry* capture_base=null, bool require_full=false)
 {
-    unreachable();
+    if (try match_common(view, offset, sub_automaton_index, capture_base, require_full))
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }
 
 <*
@@ -74,3 +83,18 @@ fn bool CompiledRegex.matches(&self, String view) @dynamic
 }
 
 
+
+
+<*
+    Common code for matching, the parameters are basically the same as the parameters for the above functions, but this can take a null allocator in which case it just returns NO_MATCH or {}
+*>
+fn Match? match_common(String view, uint offset=0, ushort sub_automaton_index = 0, CaptureEntry* capture_base, bool require_full=false, Allocator match_allocator=null) @private
+{
+    switch (sub_automaton_index)
+    {
+        // Here is where we loop over every sub_automaton to generate their code
+        default:
+            unreachable();
+    }
+    return regex::NO_MATCH?;
+}

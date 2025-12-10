@@ -108,16 +108,16 @@ fn void SingleAutomaton.reduce(&self) @private
 
             while (state_stack.len() > 0) 
             {
-                uint curStateIdx = state_stack.pop()!!;
-                usz curEdgeIdx = edge_stack.pop()!!;
+                uint cur_state_idx = state_stack.pop()!!;
+                usz cur_edge_idx = edge_stack.pop()!!;
 
-                if (curEdgeIdx + 1 < old_count[curStateIdx]) 
+                if (cur_edge_idx + 1 < old_count[cur_state_idx]) 
                 {
-                    state_stack.push(curStateIdx);
-                    edge_stack.push(curEdgeIdx + 1);
+                    state_stack.push(cur_state_idx);
+                    edge_stack.push(cur_edge_idx + 1);
                 }
 
-                AutomatonEdge edge = old_edges[old_begin[curStateIdx] + curEdgeIdx];
+                AutomatonEdge edge = old_edges[old_begin[cur_state_idx] + cur_edge_idx];
 
                 if (!keep[edge.next_state]) 
                 {
@@ -523,23 +523,6 @@ fn AutomatonLoweringResult? LoweringContext.lower(&self, Node* node, uint requir
             }
             self.add_transition(previous, end);
             return {begin, end};
-        case AT_LEAST:
-            uint begin = self.get_next_state(1)!;
-            uint end = self.get_next_state(required_end_edge_count)!;
-            uint previous = begin;
-            for (uint i = 0; i < node.node_and_number.repeat_count; i++)
-            {
-                AutomatonLoweringResult child = self.lower(node.node_and_number.child, 1)!;
-                self.add_transition(previous, child.begin);
-                previous = child.end;
-            }
-            uint middle = self.get_next_state(2)!;
-            AutomatonLoweringResult final = self.lower(node.node_and_number.child, 1)!;
-            self.add_transition(previous, middle);
-            self.add_transition(middle, final.begin);
-            self.add_transition(middle, end);
-            self.add_transition(final.end, middle);
-            return {begin, end};
         case AT_MOST:
             uint begin = self.get_next_state(2)!;
             uint end = self.get_next_state(required_end_edge_count)!;
@@ -576,17 +559,17 @@ fn AutomatonLoweringResult? LoweringContext.lower(&self, Node* node, uint requir
 <*
     Compile a regex into a set of automata, and epsilon reduce it
     
-    @param regexStr  : "The string to compile into a set of automata"
+    @param regex_str  : "The string to compile into a set of automata"
     @param options   : "The options that the regex uses"
     @param allocator : "The memory allocator to allocate the regex with"
 
     @return "A NFA representing a regex"
 *>
-fn NfaRegex? compile_regex(String regexStr, Options options = NONE, Allocator allocator = mem)
+fn NfaRegex? compile_regex(String regex_str, Options options = NONE, Allocator allocator = mem)
 {
     @pool()
     {
-        Node* regex = parsing::parse_regex(regexStr, options)!;
+        Node* regex = parsing::parse_regex(regex_str, options)!;
         List { LoweredSubAutomaton } subautomata;
         List { CharacterClass } classes;
         HashSet { usz } failed_string_conversions;

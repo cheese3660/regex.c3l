@@ -17,7 +17,6 @@ enum NodeType : char
     END_ANCHOR,             // $
     WORD_ANCHOR,            // \w
     NOT_WORD_ANCHOR,        // \W
-    AT_LEAST,               // {x,}
     AT_MOST,                // {,y} (this is actually to implement "BETWEEN" which is concat of exactly and at_most)
     ONE_OR_MORE,            // +
     ZERO_OR_MORE,           // *

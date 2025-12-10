@@ -66,3 +66,12 @@ macro Pop pop(SliceT $array)
         remove($array, $array.len-1)
     };
 }
+
+macro SliceT zero(usz $len)
+{
+    SliceT $result = {};
+    $for var $i = 0; $i < $len; $i++:
+        $result = $result +++ (SliceT){(ValueT){}};
+    $endfor
+    return $result;
+}

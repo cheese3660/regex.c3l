@@ -160,8 +160,6 @@ struct NewNode
 
 macro NewNode new(ParserContext $self, Node $value)
 {
-    $echo "Adding node!";
-    $echo $value.type;
     StNewNode $result = st_add_node($self.tree, $value);
     return
     {
@@ -249,7 +247,7 @@ macro NewNode concatenation(ParserContext $self, uint $left_index, uint $right_i
                 return
                 {
                     $left_index,
-                    replace($left, $left_index, combine_children($left, $right))
+                    replace($self, $left_index, combine_children($left, $right))
                 };
             $case NodeType.CHARACTER:
                 $if $left.character == $right.character:
@@ -405,7 +403,7 @@ macro NewNode between(ParserContext $self, uint $child_index, uint $min, uint $m
         $endswitch
         var $exact = exactly($self, $child_index, $min);
         $self = $exact.context;
-        var $at_most = new($self, {.type = AT_MOST, .children = (uint[])($true_child), .repeat_count = $max - $min});
+        var $at_most = new($self, {.type = AT_MOST, .children = (uint[]){$true_child}, .repeat_count = $max - $min});
         $self = $at_most.context;
         return concatenation($self, $exact.index, $at_most.index);
     $else
@@ -424,7 +422,7 @@ macro SyntaxTree parse(String $regex, Options $options)
     };
 }
 
-macro NewNode expr(ParserContext $self, bool $return_on_gp_end = false)
+macro NewNode expr(ParserContext $self, bool $return_on_gp_end = false, bool $return_on_separator = false)
 {
     NewNode $previous_n = quantified($self);
     $self = $previous_n.context;
@@ -447,11 +445,23 @@ macro NewNode expr(ParserContext $self, bool $return_on_gp_end = false)
 
             $case !$return_on_gp_end &&& $next.type == GROUP_END:
                 $error "Extraneous parentheses!";
-            $case $next.type == SEPARATOR:
-                NewNode $expr_n = expr($self, $return_on_gp_end);
+            $case $next.type == SEPARATOR &&& !$return_on_separator:
+                NewNode $expr_n = expr($self, $return_on_gp_end, true);
                 $self = $expr_n.context;
                 uint $expr = $expr_n.index;
-                return disjunction($self, $previous, $expr);
+                $previous_n = disjunction($self, $previous, $expr);
+                $self = $previous_n.context;
+                $previous = $previous_n.index;
+
+            $case $next.type == SEPARATOR &&& $return_on_separator:
+                $running = false;
+                $self = backtrack($self, $next);
+                return
+                {
+                    $previous,
+                    $self
+                };
+
             $default:
                 $self = backtrack($self,$next);
                 NewNode $quantified_n = quantified($self);
