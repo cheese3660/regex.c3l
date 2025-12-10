@@ -401,22 +401,18 @@ macro LexerContext backtrack(LexerContext $self, RegexToken $token) =>
     $token,
     $self.options
 };
+
+
+// macro dump_lex(String $string, Options $options = NONE)
 // {
-//     $self.has_stored_backtrack = true;
-//     $self.stored_backtrack = $token;
-//     return $self;
+//     $for LexerContext $context = on($string, $options); !done($context); $context = $context:
+//         TokenizerResult $result = get_next_token($context);
+//         $context = $result.next_context;
+//         $echo $result.token.type;
+//     $endfor
 // }
 
-macro dump_lex(String $string, Options $options = NONE)
-{
-    $for LexerContext $context = on($string, $options); !done($context); $context = $context:
-        TokenizerResult $result = get_next_token($context);
-        $context = $result.next_context;
-        $echo $result.token.type;
-    $endfor
-}
-
-fn void fake_lex() @export
-{
-    dump_lex(`(?:\d{3})+`);
-}
+// fn void fake_lex() @export
+// {
+//     dump_lex(`(?:\d{3})+`);
+// }

@@ -235,7 +235,7 @@ fn uint intern_character_class(CharacterClass to_intern, List { CharacterClass }
 *>
 struct LoweredSubAutomaton @private
 {
-    RegexNode* entry_node;
+    Node* entry_node;
     SingleAutomaton sub_automaton;
 }
 
@@ -244,7 +244,7 @@ struct LoweringContext @private
     List { LoweredSubAutomaton }* sub_automata;
     List { CharacterClass }* character_internment_cache;
     DString* string_interment_cache;
-    HashSet { usz /* RegexNode* */}* failed_string_conversions;
+    HashSet { usz /* Node* */}* failed_string_conversions;
     ushort* max_capture_group_index;
     SingleAutomaton automaton;
     Options options;
@@ -257,7 +257,7 @@ struct AutomatonLoweringResult @private
     uint end;
 }
 
-fn ushort? LoweringContext.get_sub_automaton(&self, RegexNode* sub_automaton) @private
+fn ushort? LoweringContext.get_sub_automaton(&self, Node* sub_automaton) @private
 {
     if (self.sub_automata.len() >= ushort.max) return regex::REGEX_TOO_COMPLEX?;
 
@@ -338,7 +338,7 @@ faultdef IS_NOT_A_STRING_TREE;
 
     @return? IS_NOT_A_STRING_TREE : "If the node cannot be converted to a string"
 *>
-fn void? LoweringContext.get_string_build(&self, RegexNode* node, DString* builder) @private
+fn void? LoweringContext.get_string_build(&self, Node* node, DString* builder) @private
 {
     if (self.failed_string_conversions.contains((usz)node)) return IS_NOT_A_STRING_TREE?;
     defer catch self.failed_string_conversions.add((usz)node);
@@ -391,7 +391,7 @@ fn void? LoweringContext.get_string_build(&self, RegexNode* node, DString* build
     @return  "The interned string information"
     @return? IS_NOT_A_STRING_TREE : "If the node cannot be converted to a string"
 *>
-fn InternedStringInfo? LoweringContext.get_string(&self, RegexNode* node) @private
+fn InternedStringInfo? LoweringContext.get_string(&self, Node* node) @private
 {
     @pool()
     {
@@ -414,7 +414,7 @@ fn InternedStringInfo? LoweringContext.get_string(&self, RegexNode* node) @priva
 
     @return? regex::REGEX_TOO_COMPLEX : "If the regex becomes too complex in the process of lowering"
 *>
-fn AutomatonLoweringResult? LoweringContext.lower(&self, RegexNode* node, uint required_end_edge_count = 0) @private
+fn AutomatonLoweringResult? LoweringContext.lower(&self, Node* node, uint required_end_edge_count = 0) @private
 {
     if (try info = self.get_string(node))
     {
@@ -585,7 +585,7 @@ fn NfaRegex? compile_regex(String regexStr, Options options = NONE, Allocator al
 {
     @pool()
     {
-        RegexNode* regex = parsing::parse_regex(regexStr, options)!;
+        Node* regex = parsing::parse_regex(regexStr, options)!;
         List { LoweredSubAutomaton } subautomata;
         List { CharacterClass } classes;
         HashSet { usz } failed_string_conversions;
