@@ -104,9 +104,6 @@ const TokenMapEntry[*] TOP_LEVEL_TOKEN_MAP = {
 };
 
 const TokenMapEntry[*] CG_TOKEN_MAP = {
-    {"[", POS_CG_BEGIN},
-    {"]", CG_END},
-    {"-", DASH},
     {"[:alpha:]", ALPHA_CLASS}, {"[:a:]", ALPHA_CLASS},
     {"[:alnum:]", ALNUM_CLASS}, {"[:w:]", ALNUM_CLASS},
     {"[:blank:]", BLANK_CLASS}, {"[:b:]", BLANK_CLASS},
@@ -119,4 +116,7 @@ const TokenMapEntry[*] CG_TOKEN_MAP = {
     {"[:upper:]", UPPER_CLASS}, {"[:u:]", UPPER_CLASS},
     {"[:xdigit:]",XDIGT_CLASS}, {"[:x:]", XDIGT_CLASS},
     {"[:punct:]", PUNCT_CLASS}, {"[:.:]", PUNCT_CLASS},
+    {"]", CG_END},
+    {"-", DASH},
+    {"[", POS_CG_BEGIN},
 };

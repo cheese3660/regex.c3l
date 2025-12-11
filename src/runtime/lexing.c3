@@ -117,6 +117,7 @@ fn RegexToken? TokenizerContext.get_next_token(&self)
     if (self.has_stored_backtrack)
     {
         self.has_stored_backtrack = false;
+
         return self.stored_back_track;
     }
 

@@ -83,80 +83,80 @@ fn void character_range() @test
 
 fn void character_class_w() @test
 {
-    test_common::regex_expect_match_full(`[:w:][:w:][:w:]`, Options.ASCII_ONLY, "123", "abc", "Aeb");
-    test_common::regex_expectnt_match_full(`[:w:][:w:][:w:]`, Options.ASCII_ONLY, "...");
-    test_common::regex_expect(`[:w:]`, Options.ASCII_ONLY, ".abc _123", "a", "b", "c", "1", "2", "3");
+    test_common::regex_expect_match_full(`[[:w:]][[:w:]][[:w:]]`, Options.ASCII_ONLY, "123", "abc", "Aeb");
+    test_common::regex_expectnt_match_full(`[[:w:]][[:w:]][[:w:]]`, Options.ASCII_ONLY, "...");
+    test_common::regex_expect(`[[:w:]]`, Options.ASCII_ONLY, ".abc _123", "a", "b", "c", "1", "2", "3");
 }
 
 fn void character_class_a() @test
 {
-    test_common::regex_expect_match_full(`[:a:][:a:][:a:]`, Options.ASCII_ONLY, "abc", "Aeb");
-    test_common::regex_expectnt_match_full(`[:a:][:a:][:a:]`, Options.ASCII_ONLY, "...");
-    test_common::regex_expect(`[:a:]`, Options.ASCII_ONLY, ".abc _123", "a", "b", "c");
+    test_common::regex_expect_match_full(`[[:a:]][[:a:]][[:a:]]`, Options.ASCII_ONLY, "abc", "Aeb");
+    test_common::regex_expectnt_match_full(`[[:a:]][[:a:]][[:a:]]`, Options.ASCII_ONLY, "...");
+    test_common::regex_expect(`[[:a:]]`, Options.ASCII_ONLY, ".abc _123", "a", "b", "c");
 }
 
 fn void character_class_b() @test
 {
-    test_common::regex_expect_match_full(`[:b:][:b:][:b:]`, Options.ASCII_ONLY, "\t  ");
-    test_common::regex_expectnt_match_full(`[:b:][:b:][:b:]`, Options.ASCII_ONLY, "abc");
-    test_common::regex_expect(`[:b:]`, Options.ASCII_ONLY, ".abc _123", " ");
+    test_common::regex_expect_match_full(`[[:b:]][[:b:]][[:b:]]`, Options.ASCII_ONLY, "\t  ");
+    test_common::regex_expectnt_match_full(`[[:b:]][[:b:]][[:b:]]`, Options.ASCII_ONLY, "abc");
+    test_common::regex_expect(`[[:b:]]`, Options.ASCII_ONLY, ".abc _123", " ");
 }
 
 fn void character_class_c() @test
 {
-    test_common::regex_expect_match_full(`[:c:][:c:][:c:]`, Options.ASCII_ONLY, "\e\e\e");
-    test_common::regex_expectnt_match_full(`[:c:][:c:][:c:]`, Options.ASCII_ONLY, "abc");
-    test_common::regex_expect(`[:c:]`, Options.ASCII_ONLY, ".abc\n_123", "\n");
+    test_common::regex_expect_match_full(`[[:c:]][[:c:]][[:c:]]`, Options.ASCII_ONLY, "\e\e\e");
+    test_common::regex_expectnt_match_full(`[[:c:]][[:c:]][[:c:]]`, Options.ASCII_ONLY, "abc");
+    test_common::regex_expect(`[[:c:]]`, Options.ASCII_ONLY, ".abc\n_123", "\n");
 }
 
 fn void character_class_d() @test
 {
-    test_common::regex_expect_match_full(`[:d:][:d:][:d:]`, Options.ASCII_ONLY, "123", "456", "789");
-    test_common::regex_expectnt_match_full(`[:d:][:d:][:d:]`, Options.ASCII_ONLY, "abc");
-    test_common::regex_expect(`[:d:]`, Options.ASCII_ONLY, "1a2b3c4d5e6f7g8h9i10j", "1", "2", "3", "4", "5", "6", "7", "8", "9", "1", "0");
+    test_common::regex_expect_match_full(`[[:d:]][[:d:]][[:d:]]`, Options.ASCII_ONLY, "123", "456", "789");
+    test_common::regex_expectnt_match_full(`[[:d:]][[:d:]][[:d:]]`, Options.ASCII_ONLY, "abc");
+    test_common::regex_expect(`[[:d:]]`, Options.ASCII_ONLY, "1a2b3c4d5e6f7g8h9i10j", "1", "2", "3", "4", "5", "6", "7", "8", "9", "1", "0");
 }
 
 fn void character_class_g() @test
 {
-    test_common::regex_expect_match_full(`[:g:][:g:][:g:]`, Options.ASCII_ONLY, "123", "abc", ".?5");
-    test_common::regex_expectnt_match_full(`[:g:][:g:][:g:]`, Options.ASCII_ONLY, "\0\0\0");
-    test_common::regex_expect(`[:g:]`, Options.ASCII_ONLY, ".abc\n_123", ".", "a", "b", "c", "_", "1", "2", "3");
+    test_common::regex_expect_match_full(`[[:g:]][[:g:]][[:g:]]`, Options.ASCII_ONLY, "123", "abc", ".?5");
+    test_common::regex_expectnt_match_full(`[[:g:]][[:g:]][[:g:]]`, Options.ASCII_ONLY, "\0\0\0");
+    test_common::regex_expect(`[[:g:]]`, Options.ASCII_ONLY, ".abc\n_123", ".", "a", "b", "c", "_", "1", "2", "3");
 }
 
 fn void character_class_l() @test
 {
-    test_common::regex_expect_match_full(`[:l:][:l:][:l:]`, Options.ASCII_ONLY, "dog", "cat");
-    test_common::regex_expectnt_match_full(`[:l:][:l:][:l:]`, Options.ASCII_ONLY, "HIJ", "ABC");
-    test_common::regex_expect(`[:l:]`, Options.ASCII_ONLY, "AaBbCc", "a", "b", "c");
+    test_common::regex_expect_match_full(`[[:l:]][[:l:]][[:l:]]`, Options.ASCII_ONLY, "dog", "cat");
+    test_common::regex_expectnt_match_full(`[[:l:]][[:l:]][[:l:]]`, Options.ASCII_ONLY, "HIJ", "ABC");
+    test_common::regex_expect(`[[:l:]]`, Options.ASCII_ONLY, "AaBbCc", "a", "b", "c");
 }
 
 fn void character_class_p() @test
 {
 
-    test_common::regex_expect_match_full(`[:p:][:p:][:p:]`, Options.ASCII_ONLY, "123", "abc", ".?5");
-    test_common::regex_expectnt_match_full(`[:p:][:p:][:p:]`, Options.ASCII_ONLY, "\0\0\0");
-    test_common::regex_expect(`[:p:]`, Options.ASCII_ONLY, ".abc\n_123", ".", "a", "b", "c", "_", "1", "2", "3");
+    test_common::regex_expect_match_full(`[[:p:]][[:p:]][[:p:]]`, Options.ASCII_ONLY, "123", "abc", ".?5");
+    test_common::regex_expectnt_match_full(`[[:p:]][[:p:]][[:p:]]`, Options.ASCII_ONLY, "\0\0\0");
+    test_common::regex_expect(`[[:p:]]`, Options.ASCII_ONLY, ".abc\n_123", ".", "a", "b", "c", "_", "1", "2", "3");
 }
 
 fn void character_class_punct() @test
 {
-    test_common::regex_expect_match_full(`[:.:][:.:][:.:]`, Options.ASCII_ONLY, ".?!", ",,,");
-    test_common::regex_expectnt_match_full(`[:.:][:.:][:.:]`, Options.ASCII_ONLY, "hij", "abc");
-    test_common::regex_expect(`[:.:]`, Options.ASCII_ONLY, "Hello! My name is Lexi. May I ask, how is this day treating you?","!",".",",","?");
+    test_common::regex_expect_match_full(`[[:.:]][[:.:]][[:.:]]`, Options.ASCII_ONLY, ".?!", ",,,");
+    test_common::regex_expectnt_match_full(`[[:.:]][[:.:]][[:.:]]`, Options.ASCII_ONLY, "hij", "abc");
+    test_common::regex_expect(`[[:.:]]`, Options.ASCII_ONLY, "Hello! My name is Lexi. May I ask, how is this day treating you?","!",".",",","?");
 }
 
 fn void character_class_u() @test
 {
-    test_common::regex_expect_match_full(`[:u:][:u:][:u:]`, Options.ASCII_ONLY, "DOG", "CAT");
-    test_common::regex_expectnt_match_full(`[:u:][:u:][:u:]`, Options.ASCII_ONLY, "hij", "...");
-    test_common::regex_expect(`[:u:]`, Options.ASCII_ONLY, "AaBbCc", "A", "B", "C");
+    test_common::regex_expect_match_full(`[[:u:]][[:u:]][[:u:]]`, Options.ASCII_ONLY, "DOG", "CAT");
+    test_common::regex_expectnt_match_full(`[[:u:]][[:u:]][[:u:]]`, Options.ASCII_ONLY, "hij", "...");
+    test_common::regex_expect(`[[:u:]]`, Options.ASCII_ONLY, "AaBbCc", "A", "B", "C");
 }
 
 fn void character_class_x() @test
 {
-    test_common::regex_expect_match_full(`[:x:][:x:][:x:]`, Options.ASCII_ONLY, "A3f", "FEE");
-    test_common::regex_expectnt_match_full(`[:x:][:x:][:x:]`, Options.ASCII_ONLY, "hij", "...");
-    test_common::regex_expect(`[:x:]`, Options.ASCII_ONLY, "xCAFE134", "C", "A", "F", "E", "1", "3", "4");
+    test_common::regex_expect_match_full(`[[:x:]][[:x:]][[:x:]]`, Options.ASCII_ONLY, "A3f", "FEE");
+    test_common::regex_expectnt_match_full(`[[:x:]][[:x:]][[:x:]]`, Options.ASCII_ONLY, "hij", "...");
+    test_common::regex_expect(`[[:x:]]`, Options.ASCII_ONLY, "xCAFE134", "C", "A", "F", "E", "1", "3", "4");
 }
 
 fn void quantifier_star() @test

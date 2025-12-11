@@ -112,7 +112,7 @@ fn Capture Match.get(&self, usz i) @operator([])
             "",
             self.capture_begin[i],
             self.capture_end[i]
-        }
+        };
     }
     else
     {
