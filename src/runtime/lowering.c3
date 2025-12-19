@@ -203,7 +203,7 @@ fn InternedStringInfo intern_string(String to_intern, DString *internment_cache)
     else 
     {
         usz index = internment_cache.len();
-        internment_cache.append_chars(to_intern);
+        internment_cache.append_string(to_intern);
         return {index, to_intern.len};
     }
 }

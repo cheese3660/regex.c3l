@@ -1,6 +1,26 @@
 module regex::test_common;
 import regex;
 
+macro regex_expect_a(r, $on, ...)
+{
+    @pool()
+    {
+        MatchIterator iter = r.iter_matches($on);
+        $for var $i = 0; $i < $vacount; $i++:
+            if (try result = iter.next())
+            {
+                assert(result.matched() == $vaconst[$i], "Regex failed to match " +++ $vaconst[$i]);
+            }
+            else
+            {
+                assert(false, "Regex did not have match " +++ $vaconst[$i] +++ " at index " +++ ($i + 1) +++ " it instead stopped matching" );
+            }
+        $endfor;
+
+        if (try last = iter.next()) assert(false, "Regex  had too many matches");
+    };
+}
+
 macro regex_expect($regex, $options, $on, ...)
 {
     @pool()
@@ -8,7 +28,6 @@ macro regex_expect($regex, $options, $on, ...)
         RuntimeRegex? rr = regex::make_runtime_regex($regex, $options, tmem);
         if (catch rr) assert(false, "Regex " +++ $regex +++ " failed to be lowered");
         Regex r = &rr;
-
         MatchIterator iter = r.iter_matches($on);
         $for var $i = 0; $i < $vacount; $i++:
             if (try result = iter.next())
@@ -23,6 +42,7 @@ macro regex_expect($regex, $options, $on, ...)
 
         if (try last = iter.next()) assert(false, "Regex " +++ $regex +++ " had too many matches");
     };
+
 }
 
 macro regex_expect_match_full($regex, $options, ...)
