@@ -52,7 +52,7 @@ macro Char32 from_hex_unicode(char x) @private => (Char32)ascii::HEX_VALUE[x];
 *>
 fn Char32? handle_escape_character(String after_escape, usz* consumed) @private
 {
-    if (after_escape.len == 0) return regex::INVALID_ESCAPE_SEQUENCE?;
+    if (after_escape.len == 0) return regex::INVALID_ESCAPE_SEQUENCE~;
 
     *consumed = 1;
     
@@ -69,18 +69,18 @@ fn Char32? handle_escape_character(String after_escape, usz* consumed) @private
         case 'r':
             return '\r';
         case 'c':
-            if (after_escape.len == 1) return regex::INVALID_ESCAPE_SEQUENCE?;
+            if (after_escape.len == 1) return regex::INVALID_ESCAPE_SEQUENCE~;
             *consumed = 2;
             return after_escape[1] & 31;
         case 'x':
             *consumed = 3;
-            if (after_escape.len < 3) return regex::INVALID_ESCAPE_SEQUENCE?;
-            if (!after_escape[1].is_xdigit() || !after_escape[2].is_xdigit()) return regex::INVALID_ESCAPE_SEQUENCE?;
+            if (after_escape.len < 3) return regex::INVALID_ESCAPE_SEQUENCE~;
+            if (!after_escape[1].is_xdigit() || !after_escape[2].is_xdigit()) return regex::INVALID_ESCAPE_SEQUENCE~;
             return from_hex(after_escape[1], after_escape[2]);
         case 'u':
             usz actually_consumed = 1;
-            if (after_escape.len < 2) return regex::INVALID_ESCAPE_SEQUENCE?;
-            if (!after_escape[1].is_xdigit()) return regex::INVALID_ESCAPE_SEQUENCE?;
+            if (after_escape.len < 2) return regex::INVALID_ESCAPE_SEQUENCE~;
+            if (!after_escape[1].is_xdigit()) return regex::INVALID_ESCAPE_SEQUENCE~;
             Char32 result = 0;
             do {
                 result <<= 4;
@@ -88,7 +88,7 @@ fn Char32? handle_escape_character(String after_escape, usz* consumed) @private
                 actually_consumed += 1;
             } while (actually_consumed < 7 && actually_consumed < after_escape.len && after_escape[actually_consumed].is_xdigit());
             *consumed = actually_consumed;
-            if (result > 0x10FFFF) return regex::INVALID_ESCAPE_SEQUENCE?;
+            if (result > 0x10FFFF) return regex::INVALID_ESCAPE_SEQUENCE~;
             return result;
         case '0':
             return 0;
@@ -127,12 +127,12 @@ fn RegexToken? TokenizerContext.get_next_token(&self)
         {
             case IN_CG:
                 self.mode = DEFLT;
-                return regex::UNTERMINATED_CHARACTER_GROUP?;
+                return regex::UNTERMINATED_CHARACTER_GROUP~;
             case IN_RQ:
                 self.mode = DEFLT;
-                return regex::UNTERMINATED_RANGE_QUANTIFIER?;
+                return regex::UNTERMINATED_RANGE_QUANTIFIER~;
             default:
-                return regex::UNEXPECTED_END_OF_INPUT?;
+                return regex::UNEXPECTED_END_OF_INPUT~;
         }
     }
     usz consumed = 0;
@@ -177,7 +177,7 @@ fn RegexToken? TokenizerContext.deflt(&self, usz* consumed) @private
 
     if (regex.starts_with(tokens::ESCAPE_SEQUENCE)) 
     {
-        if (regex.len == tokens::ESCAPE_SEQUENCE.len) return regex::INVALID_ESCAPE_SEQUENCE?;
+        if (regex.len == tokens::ESCAPE_SEQUENCE.len) return regex::INVALID_ESCAPE_SEQUENCE~;
         if (regex[tokens::ESCAPE_SEQUENCE.len].is_digit() && regex[tokens::ESCAPE_SEQUENCE.len] != '0')
         {
             usz end_index = tokens::ESCAPE_SEQUENCE.len + 1;
@@ -189,7 +189,7 @@ fn RegexToken? TokenizerContext.deflt(&self, usz* consumed) @private
             RegexToken result;
             result.type = BACKREFERENCE;
             result.context.num = regex[1..end_index - 1].to_integer(uint)!;
-            if (result.context.num > 65535) return regex::INVALID_CAPTURE_GROUP_ID?;
+            if (result.context.num > 65535) return regex::INVALID_CAPTURE_GROUP_ID~;
             return result;
         } 
         else 
@@ -243,7 +243,7 @@ fn RegexToken? TokenizerContext.rq(&self, usz* consumed) @private
 
     if (!regex[0].is_digit()) 
     {
-        return regex::UNEXPECTED_CHARACTER?;
+        return regex::UNEXPECTED_CHARACTER~;
     }
 
     while (*consumed < regex.len && regex[*consumed].is_digit()) 

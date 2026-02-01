@@ -227,7 +227,7 @@ macro Node*? between(Node* child, uint min, uint max) @private
 {
     if (min > max) 
     {
-        return regex::INVALID_RANGE_QUANTIFIER?;
+        return regex::INVALID_RANGE_QUANTIFIER~;
     }
 
     if (min > 0) 
@@ -272,7 +272,7 @@ macro Node* character_class(CharacterClass class, NodeType type) @private
 *>
 macro Node*? backreference(uint num) @private
 {
-    if (num > 65535) return regex::INVALID_CAPTURE_GROUP_ID?;
+    if (num > 65535) return regex::INVALID_CAPTURE_GROUP_ID~;
     
     Node* node = mem::talloc(Node);
     node.type = BACKREF;
@@ -333,7 +333,7 @@ struct RegexParser @private
 *>
 fn ushort? RegexParser.next_cg(&self) @private
 {
-    if (self.capture_group == ushort.max) return regex::REGEX_TOO_COMPLEX?;
+    if (self.capture_group == ushort.max) return regex::REGEX_TOO_COMPLEX~;
     return self.capture_group++;
 }
 
@@ -355,7 +355,7 @@ fn Node*? RegexParser.expr(&self, bool return_on_gp_end = false) @private
         }
         if (!return_on_gp_end && next.type == GROUP_END)
         {
-            return regex::EXTRANEOUS_PARENTHESES?;
+            return regex::EXTRANEOUS_PARENTHESES~;
         }
         if (next.type == SEPARATOR)
         {
@@ -366,7 +366,7 @@ fn Node*? RegexParser.expr(&self, bool return_on_gp_end = false) @private
     }
     if (return_on_gp_end)
     {
-        return regex::UNTERMINATED_SUBEXPRESSION?;
+        return regex::UNTERMINATED_SUBEXPRESSION~;
     }
     return previous;
 }
@@ -388,8 +388,8 @@ fn Node*? RegexParser.quantified(&self) @private
     {
         case RQ_BEGIN:
             peek = self.tokenizer.get_next_token()!;
-            if (peek.type == RQ_END) return regex::UNFILLED_RANGE_QUANTIFIER?;
-            if (peek.type == RQ_SEPARATOR) return regex::INVALID_RANGE_QUANTIFIER?;
+            if (peek.type == RQ_END) return regex::UNFILLED_RANGE_QUANTIFIER~;
+            if (peek.type == RQ_SEPARATOR) return regex::INVALID_RANGE_QUANTIFIER~;
             uint begin = peek.context.num;
             peek = self.tokenizer.get_next_token()!;
             if (peek.type == RQ_END)
@@ -407,7 +407,7 @@ fn Node*? RegexParser.quantified(&self) @private
             {
                 return between(primary, begin, end)!;
             }
-            return regex::INVALID_RANGE_QUANTIFIER?;
+            return regex::INVALID_RANGE_QUANTIFIER~;
         case ONE_OR_MORE:
             return single_child(primary, ONE_OR_MORE);
         case ZERO_OR_MORE:
@@ -493,7 +493,7 @@ fn Node*? RegexParser.primary(&self) @private
         case BACKREFERENCE:
             return backreference(original.context.num)!;
         default:
-            return regex::UNEXPECTED_TOKEN?;
+            return regex::UNEXPECTED_TOKEN~;
     }
 }
 
@@ -547,7 +547,7 @@ fn CharacterClass? RegexParser.class(&self) @private
                     class.add_character(next.context.ch);
                 }
             default:
-                return regex::UNEXPECTED_CHARACTER?;
+                return regex::UNEXPECTED_CHARACTER~;
         }
         next = self.tokenizer.get_next_token()!;
     }

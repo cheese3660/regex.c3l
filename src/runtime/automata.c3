@@ -537,7 +537,7 @@ fn Match? NfaRegex.match_in_view(&self, String view, usz offset, Allocator match
             self.push_next_edge(&static_context, &context_stack, edge_offset, index, capture_index, consumption_length);
         }
 
-        return regex::NO_MATCH?;
+        return regex::NO_MATCH~;
     };
 }
 

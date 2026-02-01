@@ -27,7 +27,7 @@ const TRAILING_SEQUENCE = 0b1000_0000;
 *>
 fn Char32? get_character(String view, usz* consumed)
 {
-    if (view.len == 0) return INVALID_UTF8_SEQUENCE?;
+    if (view.len == 0) return INVALID_UTF8_SEQUENCE~;
 
     Char32 first_byte = view[0];
     if (first_byte < 128)
@@ -36,9 +36,9 @@ fn Char32? get_character(String view, usz* consumed)
         return first_byte;
     }
 
-    if (view.len < 2) return INVALID_UTF8_SEQUENCE?;
+    if (view.len < 2) return INVALID_UTF8_SEQUENCE~;
     Char32 second_byte = view[1];
-    if (second_byte & TRAILING_MASK != TRAILING_SEQUENCE) return INVALID_UTF8_SEQUENCE?;
+    if (second_byte & TRAILING_MASK != TRAILING_SEQUENCE) return INVALID_UTF8_SEQUENCE~;
 
     if (first_byte & TWO_BYTE_MASK == TWO_BYTE_SEQUENCE)
     {
@@ -49,10 +49,10 @@ fn Char32? get_character(String view, usz* consumed)
     else if (first_byte & THREE_BYTE_MASK == THREE_BYTE_SEQUENCE)
     {
         // 3 byte sequence
-        if (view.len < 3) return INVALID_UTF8_SEQUENCE?;
+        if (view.len < 3) return INVALID_UTF8_SEQUENCE~;
         *consumed = 3;
         Char32 third_byte = view[2];
-        if (third_byte & TRAILING_MASK != TRAILING_SEQUENCE) return INVALID_UTF8_SEQUENCE?;
+        if (third_byte & TRAILING_MASK != TRAILING_SEQUENCE) return INVALID_UTF8_SEQUENCE~;
         return ((first_byte & ~THREE_BYTE_SEQUENCE) << 12) | 
                ((second_byte & ~TRAILING_SEQUENCE) << 6)| 
                (third_byte & ~TRAILING_SEQUENCE);
@@ -60,12 +60,12 @@ fn Char32? get_character(String view, usz* consumed)
     else if (first_byte & FOUR_BYTE_MASK == FOUR_BYTE_SEQUENCE)
     {
         // 4 byte sequence
-        if (view.len < 4) return INVALID_UTF8_SEQUENCE?;
+        if (view.len < 4) return INVALID_UTF8_SEQUENCE~;
         *consumed = 4;
         Char32 third_byte = view[2];
-        if (third_byte & TRAILING_MASK != TRAILING_SEQUENCE) return INVALID_UTF8_SEQUENCE?;
+        if (third_byte & TRAILING_MASK != TRAILING_SEQUENCE) return INVALID_UTF8_SEQUENCE~;
         Char32 fourth_byte = view[3];
-        if (fourth_byte & TRAILING_MASK != TRAILING_SEQUENCE) return INVALID_UTF8_SEQUENCE?;
+        if (fourth_byte & TRAILING_MASK != TRAILING_SEQUENCE) return INVALID_UTF8_SEQUENCE~;
         return ((first_byte & ~FOUR_BYTE_SEQUENCE) << 18) | 
                ((second_byte & ~TRAILING_SEQUENCE) << 12) | 
                ((third_byte & ~TRAILING_SEQUENCE) << 6) | 
@@ -73,7 +73,7 @@ fn Char32? get_character(String view, usz* consumed)
     }
     else
     {
-        return INVALID_UTF8_SEQUENCE?;
+        return INVALID_UTF8_SEQUENCE~;
     }
 }
 
