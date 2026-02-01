@@ -260,7 +260,7 @@ struct AutomatonLoweringResult @private
 
 fn ushort? LoweringContext.get_sub_automaton(&self, Node* sub_automaton) @private
 {
-    if (self.sub_automata.len() >= ushort.max) return regex::REGEX_TOO_COMPLEX?;
+    if (self.sub_automata.len() >= ushort.max) return regex::REGEX_TOO_COMPLEX~;
 
     for (ushort i = 0; i < self.sub_automata.len(); i++)
     {
@@ -293,8 +293,8 @@ fn ushort? LoweringContext.get_sub_automaton(&self, Node* sub_automaton) @privat
 *>
 fn uint? LoweringContext.get_next_state(&self, uint allocated_edges = 1) @private
 {
-    if (allocated_edges >= 0xFFFFFF) return regex::REGEX_TOO_COMPLEX?;
-    if (self.automaton.state_edge_count.len() >= 0xFFFFFF) return regex::REGEX_TOO_COMPLEX?;
+    if (allocated_edges >= 0xFFFFFF) return regex::REGEX_TOO_COMPLEX~;
+    if (self.automaton.state_edge_count.len() >= 0xFFFFFF) return regex::REGEX_TOO_COMPLEX~;
     uint idx = (uint)self.automaton.state_edge_count.len();
     self.automaton.state_edge_count.push(0);
     self.automaton.state_edges_begin.push(self.automaton.edges.len());
@@ -341,7 +341,7 @@ faultdef IS_NOT_A_STRING_TREE;
 *>
 fn void? LoweringContext.get_string_build(&self, Node* node, DString* builder) @private
 {
-    if (self.failed_string_conversions.contains((uptr)node)) return IS_NOT_A_STRING_TREE?;
+    if (self.failed_string_conversions.contains((uptr)node)) return IS_NOT_A_STRING_TREE~;
     defer catch self.failed_string_conversions.add((uptr)node);
 
     switch (node.type)
@@ -373,14 +373,14 @@ fn void? LoweringContext.get_string_build(&self, Node* node, DString* builder) @
 
                 for (uint i = 0; i < node.node_and_number.repeat_count; i++)
                 {
-                    builder.append_string(child_builder);
+                    builder.append_dstring(child_builder);
                 }
             };
         case CONCAT:
             self.get_string_build(node.binary.lhs,builder)!;
             self.get_string_build(node.binary.rhs,builder)!;
         default:
-            return IS_NOT_A_STRING_TREE?;
+            return IS_NOT_A_STRING_TREE~;
     }
 }
 
@@ -402,7 +402,7 @@ fn InternedStringInfo? LoweringContext.get_string(&self, Node* node) @private
         {
             return intern_string(result.str_view(),self.string_interment_cache);
         }
-        return IS_NOT_A_STRING_TREE?;
+        return IS_NOT_A_STRING_TREE~;
     };
 }
 
@@ -598,7 +598,7 @@ fn NfaRegex? compile_regex(String regex_str, Options options = NONE, Allocator a
 
         foreach (&edge : root_context.automaton.edges)
         {
-            if (edge.transition_type == BACK_REFERENCE && edge.associated_data.back_reference.capture_group_index > max_capture_group_index) return regex::INVALID_CAPTURE_GROUP_ID?;
+            if (edge.transition_type == BACK_REFERENCE && edge.associated_data.back_reference.capture_group_index > max_capture_group_index) return regex::INVALID_CAPTURE_GROUP_ID~;
         }
         
         // Now let's do some analyses
@@ -608,13 +608,13 @@ fn NfaRegex? compile_regex(String regex_str, Options options = NONE, Allocator a
             edge_count += automaton.sub_automaton.edges.len();
             foreach (&edge : automaton.sub_automaton.edges) 
             {
-            if (edge.transition_type == BACK_REFERENCE && edge.associated_data.back_reference.capture_group_index > max_capture_group_index) return regex::INVALID_CAPTURE_GROUP_ID?;
+            if (edge.transition_type == BACK_REFERENCE && edge.associated_data.back_reference.capture_group_index > max_capture_group_index) return regex::INVALID_CAPTURE_GROUP_ID~;
             }
         }
 
         if (state_count >= 0x1000000)
         {
-            return regex::REGEX_TOO_COMPLEX?;
+            return regex::REGEX_TOO_COMPLEX~;
         }
 
         CharacterClass[] allocated_classes = allocator::new_array(allocator, CharacterClass, classes.len());

@@ -193,5 +193,5 @@ fn Match? MatchIterator.next(&self, Allocator match_allocator=tmem) {
             self.idx += 1;
         }
     }
-    return NO_MORE_MATCHES?;
+    return NO_MORE_MATCHES~;
 }
